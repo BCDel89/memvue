@@ -31,8 +31,13 @@ export default function App() {
 
   const checkHealth = useCallback(async () => {
     try {
-      await api.health();
+      const h = await api.health();
       setConnected(true);
+      if (!localStorage.getItem(USER_ID_KEY) && h.default_user_id) {
+        localStorage.setItem(USER_ID_KEY, h.default_user_id);
+        setUserId(h.default_user_id);
+        setUserIdInput(h.default_user_id);
+      }
     } catch {
       setConnected(false);
     }

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -95,7 +97,11 @@ def _mem(m: Memory) -> dict:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "adapters": list(_adapters.keys())}
+    return {
+        "status": "ok",
+        "adapters": list(_adapters.keys()),
+        "default_user_id": _config.mem0.user_id or "default",
+    }
 
 
 @app.get("/adapters")

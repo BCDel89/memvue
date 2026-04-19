@@ -62,5 +62,5 @@ export const api = {
 
   stats: (userId?: string) => req<Stats>('GET', `/stats${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`),
 
-  health: () => req<{ status: string; adapters: string[] }>('GET', '/health'),
+  health: () => req<{ status: string; adapters: string[]; default_user_id?: string }>('GET', '/health'),
 }
