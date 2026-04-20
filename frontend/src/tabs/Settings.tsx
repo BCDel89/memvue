@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from '../api/client'
 import type { LLMConfig } from '../api/client'
 
@@ -139,7 +139,7 @@ export function Settings({ onRefresh }: Props) {
                 value={newRoot}
                 onChange={e => setNewRoot(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddRoot() }}
-                className="input flex-1 min-w-0"
+                className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
                 placeholder="/path/to/notes"
               />
               <button
@@ -243,8 +243,81 @@ export function Settings({ onRefresh }: Props) {
           Backend: <code className="text-gray-500">http://localhost:7700</code>
         </p>
 
+        <div className="border-t border-gray-800" />
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Claude Code Skill</h2>
+            <p className="text-xs text-gray-600 mt-1">Pair memvue with a Claude Code skill for architecture docs, sync guidance, and memory-writing tips — loaded automatically when you're working with memories.</p>
+          </div>
+
+          <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="text-violet-400 text-lg leading-none mt-0.5">⬡</span>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-300 font-medium">Install the memvue skill</p>
+                <p className="text-xs text-gray-500">Gives Claude context about how memvue works — mem0 dedup behavior, sync tracking, memory-friendly file patterns, and troubleshooting tips.</p>
+              </div>
+            </div>
+
+            <CopyCommand cmd="npx skills add bcdel89/memvue -a claude-code" />
+
+            <div className="grid grid-cols-1 gap-1.5 pt-1">
+              {[
+                'Understands mem0 dedup — won\'t be confused when sync NOOPs',
+                'Knows how localStorage hash tracking works',
+                'Tips for writing memory-friendly markdown',
+                'Troubleshooting common issues',
+              ].map(tip => (
+                <p key={tip} className="text-xs text-gray-500 flex gap-1.5"><span className="text-violet-600 shrink-0">·</span>{tip}</p>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <div className="border-t border-gray-800" />
+
+        <div className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-3">
+          <div>
+            <p className="text-sm text-gray-300">memvue is free &amp; open source</p>
+            <p className="text-xs text-gray-600 mt-0.5">If it's useful, a coffee keeps it going ☕</p>
+          </div>
+          <a
+            href="https://buymeacoffee.com/bcdel89"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 ml-4 px-3 py-1.5 text-xs font-medium bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 rounded-lg transition-colors"
+          >
+            Buy me a coffee
+          </a>
+        </div>
+
       </div>
     </div>
+  )
+}
+
+function CopyCommand({ cmd }: { cmd: string }) {
+  const [copied, setCopied] = useState(false)
+  const ref = useRef<HTMLElement>(null)
+
+  function copy() {
+    navigator.clipboard.writeText(cmd)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
+  }
+
+  return (
+    <button
+      onClick={copy}
+      className="w-full flex items-center justify-between gap-2 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg px-3 py-2 text-left group transition-colors"
+      title="Click to copy"
+    >
+      <code ref={ref} className="text-xs text-violet-300 font-mono break-all">{cmd}</code>
+      <span className="shrink-0 text-xs text-gray-600 group-hover:text-gray-400 transition-colors">
+        {copied ? '✓' : 'copy'}
+      </span>
+    </button>
   )
 }
 

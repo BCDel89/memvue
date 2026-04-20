@@ -6,6 +6,8 @@ import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 import { SyncProgressModal } from '../components/SyncProgressModal'
+import { SyncConfirmModal } from '../components/SyncConfirmModal'
+import { getSyncRecord, setSyncRecord } from '../lib/syncStore'
 
 function shortSource(src: string): string {
   if (src.startsWith('fs:')) {
@@ -14,6 +16,17 @@ function shortSource(src: string): string {
   }
   return src
 }
+
+function hashContent(content: string): string {
+  let h = 2166136261
+  for (let i = 0; i < content.length; i++) {
+    h ^= content.charCodeAt(i)
+    h = Math.imul(h, 16777619) >>> 0
+  }
+  return h.toString(16)
+}
+
+export type SyncStatus = 'unsynced' | 'synced' | 'modified'
 
 type SortKey = 'newest' | 'oldest' | 'longest' | 'shortest' | 'az' | 'za'
 
@@ -45,6 +58,9 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
     cancelled: boolean
   } | null>(null)
   const cancelRef = useRef(false)
+  const [showSyncConfirm, setShowSyncConfirm] = useState(false)
+  const [syncTarget, setSyncTarget] = useState<MemoryEntry | null>(null)
+  const [syncStatusMap, setSyncStatusMap] = useState<Record<string, SyncStatus>>({})
 
   async function load() {
     if (!fsAdapters.length) return
@@ -52,7 +68,21 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
     setError('')
     try {
       const lists = await Promise.all(fsAdapters.map(a => api.listMemories(a.id, 5000, userId)))
-      setFiles(lists.flat())
+      const loaded = lists.flat()
+      setFiles(loaded)
+
+      if (hasMem0) {
+        const statuses: Record<string, SyncStatus> = {}
+        for (const f of loaded) {
+          const p = f.metadata?.path as string | undefined
+          if (!p) { statuses[f.id] = 'unsynced'; continue }
+          const record = getSyncRecord(userId, p)
+          if (!record) { statuses[f.id] = 'unsynced'; continue }
+          const hash = hashContent(f.content)
+          statuses[f.id] = record.hash === hash ? 'synced' : 'modified'
+        }
+        setSyncStatusMap(statuses)
+      }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -83,8 +113,8 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
     }
     return [...list].sort((a, b) => {
       switch (sort) {
-        case 'newest':   return (b.created_at ?? '').localeCompare(a.created_at ?? '')
-        case 'oldest':   return (a.created_at ?? '').localeCompare(b.created_at ?? '')
+        case 'newest':   return (b.updated_at ?? b.created_at ?? '').localeCompare(a.updated_at ?? a.created_at ?? '')
+        case 'oldest':   return (a.updated_at ?? a.created_at ?? '').localeCompare(b.updated_at ?? b.created_at ?? '')
         case 'longest':  return b.content.length - a.content.length
         case 'shortest': return a.content.length - b.content.length
         case 'az':       return a.content.localeCompare(b.content)
@@ -119,8 +149,7 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
     }
   }
 
-  async function startSync() {
-    const targets = filtered
+  async function startSync(targets = syncTarget ? [syncTarget] : filtered) {
     cancelRef.current = false
     setSyncState({ running: true, total: targets.length, done: 0, errors: 0, cancelled: false })
 
@@ -132,11 +161,16 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
       }
       const f = targets[i]
       try {
+        const hash = hashContent(f.content)
+        const synced_at = new Date().toISOString()
         await api.create(f.content, 'mem0', {
           ...f.metadata,
           synced_from_fs: f.source,
-          synced_at: new Date().toISOString(),
+          synced_at,
         })
+        const p = f.metadata?.path as string | undefined
+        if (p) setSyncRecord(userId, p, { hash, synced_at })
+        setSyncStatusMap(prev => ({ ...prev, [f.id]: 'synced' }))
       } catch {
         errors++
       }
@@ -199,7 +233,7 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
 
         {hasMem0 && (
           <button
-            onClick={startSync}
+            onClick={() => { setSyncTarget(null); setShowSyncConfirm(true) }}
             disabled={filtered.length === 0 || loading}
             className="px-3 py-1.5 sm:py-2 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 whitespace-nowrap"
             title={`Sync ${filtered.length} file${filtered.length !== 1 ? 's' : ''} to mem0`}
@@ -264,6 +298,8 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
             highlight={filter}
             onDelete={m => setDeleteTarget(m)}
             onEdit={f => setModal({ open: true, editing: f })}
+            onSync={hasMem0 ? m => { setSyncTarget(m); setShowSyncConfirm(true) } : undefined}
+            syncStatus={syncStatusMap[f.id]}
             onMetadataUpdate={async (m, metadata) => {
               await api.update(m.source, m.id, m.content, metadata)
               setFiles(prev => prev.map(x => x.id === m.id ? { ...x, metadata } : x))
@@ -290,6 +326,13 @@ export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: P
           label={deleteTarget.metadata?.filename as string ?? deleteTarget.id}
           onConfirm={confirmDelete}
           onClose={() => setDeleteTarget(null)}
+        />
+      )}
+      {showSyncConfirm && (
+        <SyncConfirmModal
+          count={syncTarget ? 1 : filtered.length}
+          onConfirm={startSync}
+          onClose={() => { setShowSyncConfirm(false); setSyncTarget(null) }}
         />
       )}
       {syncState && (

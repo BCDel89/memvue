@@ -122,8 +122,8 @@ export function AllMemories({ adapters, userId, onStatsChange, llmConfigured }: 
     )
     return [...list].sort((a, b) => {
       switch (sort) {
-        case 'newest': return (b.created_at ?? '').localeCompare(a.created_at ?? '')
-        case 'oldest': return (a.created_at ?? '').localeCompare(b.created_at ?? '')
+        case 'newest': return (b.updated_at ?? b.created_at ?? '').localeCompare(a.updated_at ?? a.created_at ?? '')
+        case 'oldest': return (a.updated_at ?? a.created_at ?? '').localeCompare(b.updated_at ?? b.created_at ?? '')
         case 'longest': return b.content.length - a.content.length
         case 'shortest': return a.content.length - b.content.length
         case 'az': return a.content.localeCompare(b.content)

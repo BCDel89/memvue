@@ -24,15 +24,26 @@ export default function StatsBar({ total, sources, onRefresh }: Props) {
           <span className="ml-1 text-gray-600">{count}</span>
         </span>
       ))}
-      {onRefresh && (
-        <button
-          onClick={onRefresh}
-          className="ml-auto text-gray-600 hover:text-gray-400 transition-colors"
-          title="Refresh stats"
+      <div className="ml-auto flex items-center gap-3">
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            className="text-gray-600 hover:text-gray-400 transition-colors"
+            title="Refresh stats"
+          >
+            ↻
+          </button>
+        )}
+        <a
+          href="https://buymeacoffee.com/bcdel89"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-600 hover:text-yellow-500 transition-colors"
+          title="Support memvue"
         >
-          ↻
-        </button>
-      )}
+          ☕
+        </a>
+      </div>
     </div>
   )
 }
