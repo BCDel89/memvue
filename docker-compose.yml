@@ -8,7 +8,16 @@ services:
     env_file:
       - .env
     volumes:
+      # Mount every path listed in FS_ROOTS (read-only).
+      # Example — if FS_ROOTS=/Users/me/.claude,/Users/me/notes:
+      #   - /Users/me/.claude:/Users/me/.claude:ro
+      #   - /Users/me/notes:/Users/me/notes:ro
       - ${FS_ROOTS:-./data}:${FS_ROOTS:-./data}:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
   frontend:
@@ -18,5 +27,6 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
