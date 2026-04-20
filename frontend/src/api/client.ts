@@ -151,6 +151,7 @@ export const api = {
     status: string
     adapters: string[]
     default_user_id?: string
+    workspace?: string
     agent_name?: string
     graph_entry_points?: string[]
     fs_extensions?: string[]

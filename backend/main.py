@@ -89,7 +89,7 @@ class MemoryOut(BaseModel):
 
 class CreateRequest(BaseModel):
     content: str
-    user_id: str = "default"
+    user_id: str = _config.workspace
     metadata: Optional[dict] = None
     adapter: Optional[str] = None
 
@@ -101,7 +101,7 @@ class UpdateRequest(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str
-    user_id: str = "default"
+    user_id: str = _config.workspace
     top_k: int = 10
     adapter: Optional[str] = None
 
@@ -136,7 +136,8 @@ def health():
     return {
         "status": "ok",
         "adapters": list(_adapters.keys()),
-        "default_user_id": _config.mem0.user_id or "default",
+        "default_user_id": _config.workspace,
+        "workspace": _config.workspace,
         "agent_name": _config.agent_name,
         "graph_entry_points": _config.graph_entry_points,
         "fs_extensions": _fs_extensions(),
@@ -163,7 +164,7 @@ def list_adapters(x_api_key: str = Header(default="")):
 
 @app.get("/memories")
 async def list_memories(
-    user_id: str = Query(default="default"),
+    user_id: str = Query(default=_config.workspace),
     limit: int = Query(default=1000),
     adapter: Optional[str] = Query(default=None),
     x_api_key: str = Header(default=""),
@@ -214,7 +215,7 @@ def _jaccard(a: str, b: str) -> float:
 
 @app.get("/memories/duplicates")
 async def find_duplicates(
-    user_id: str = Query(default="default"),
+    user_id: str = Query(default=_config.workspace),
     threshold: float = Query(default=0.5, ge=0.0, le=1.0),
     limit: int = Query(default=500, le=2000),
     x_api_key: str = Header(default=""),
@@ -611,7 +612,7 @@ async def suggest_tags(req: SuggestTagsRequest, x_api_key: str = Header(default=
 
 
 @app.get("/stats")
-async def get_stats(user_id: str = Query(default="default"), x_api_key: str = Header(default="")):
+async def get_stats(user_id: str = Query(default=_config.workspace), x_api_key: str = Header(default="")):
     check_auth(x_api_key)
     keys = list(_adapters.keys())
     stats_list = await asyncio.gather(*[adp.stats(user_id=user_id) for adp in _adapters.values()])
