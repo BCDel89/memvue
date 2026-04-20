@@ -69,6 +69,7 @@ class AppConfig:
     cors_origins: list[str] = field(default_factory=lambda: ["*"])
     graph_entry_points: list[str] = field(default_factory=lambda: ["MEMORY.md", "CLAUDE.md"])
     support_url: str = ""
+    workspace: str = "default"
 
 
 def load_config() -> AppConfig:
@@ -102,12 +103,15 @@ def load_config() -> AppConfig:
     llm_api_key  = llm_rt.get("api_key")  or os.environ.get("LLM_API_KEY", "")
     llm_model    = llm_rt.get("model")    or os.environ.get("LLM_MODEL", "")
 
+    workspace = os.environ.get("MEMVUE_WORKSPACE") or os.environ.get("MEM0_USER_ID", "default")
+
     return AppConfig(
         api_key=os.environ.get("MEMVUE_API_KEY", ""),
         agent_name=os.environ.get("AGENT_NAME", "agent"),
         support_url=os.environ.get("SUPPORT_URL", ""),
         cors_origins=cors_origins,
         graph_entry_points=entry_points,
+        workspace=workspace,
         llm=LLMConfig(
             provider=llm_provider,
             base_url=llm_base_url,

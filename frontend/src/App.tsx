@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AllMemories from "./tabs/AllMemories";
 import LocalFiles from "./tabs/LocalFiles";
 import Graph from "./tabs/Graph";
@@ -21,6 +21,21 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const USER_ID_KEY = "memvue_user_id";
+const WORKSPACES_KEY = "memvue_workspaces";
+
+function getStoredWorkspaces(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(WORKSPACES_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function addStoredWorkspace(ws: string) {
+  const list = getStoredWorkspaces().filter(w => w !== ws);
+  list.unshift(ws);
+  localStorage.setItem(WORKSPACES_KEY, JSON.stringify(list.slice(0, 10)));
+}
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("all");
@@ -33,21 +48,31 @@ export default function App() {
   const [agentName, setAgentName] = useState("agent");
   const [entryPoints, setEntryPoints] = useState<string[]>(["MEMORY.md", "CLAUDE.md"]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
+  const [workspaceInput, setWorkspaceInput] = useState("");
+  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>(() => getStoredWorkspaces());
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(() => {
     api.adapters().then(setAdapters).catch(() => {});
     setRefreshKey(k => k + 1);
-    setUserId(localStorage.getItem(USER_ID_KEY) ?? "default");
+    const current = localStorage.getItem(USER_ID_KEY) ?? "default";
+    setUserId(current);
+    addStoredWorkspace(current);
+    setRecentWorkspaces(getStoredWorkspaces());
   }, []);
 
   const checkHealth = useCallback(async () => {
     try {
       const h = await api.health();
       setConnected(true);
+      const serverWs = h.workspace || h.default_user_id;
       const stored = localStorage.getItem(USER_ID_KEY);
-      if ((!stored || stored === "default") && h.default_user_id) {
-        localStorage.setItem(USER_ID_KEY, h.default_user_id);
-        setUserId(h.default_user_id);
+      if ((!stored || stored === "default") && serverWs) {
+        localStorage.setItem(USER_ID_KEY, serverWs);
+        setUserId(serverWs);
+        addStoredWorkspace(serverWs);
+        setRecentWorkspaces(getStoredWorkspaces());
       }
       if (h.agent_name) setAgentName(h.agent_name);
       if (h.graph_entry_points?.length) setEntryPoints(h.graph_entry_points);
@@ -73,6 +98,29 @@ export default function App() {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (workspaceRef.current && !workspaceRef.current.contains(e.target as Node)) {
+        setShowWorkspaceDropdown(false);
+        setWorkspaceInput("");
+      }
+    }
+    if (showWorkspaceDropdown) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showWorkspaceDropdown]);
+
+  function switchWorkspace(ws: string) {
+    const trimmed = ws.trim();
+    if (!trimmed) return;
+    localStorage.setItem(USER_ID_KEY, trimmed);
+    setUserId(trimmed);
+    addStoredWorkspace(trimmed);
+    setRecentWorkspaces(getStoredWorkspaces());
+    setShowWorkspaceDropdown(false);
+    setWorkspaceInput("");
+    setRefreshKey(k => k + 1);
+  }
 
   return (
     <div className="h-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden">
@@ -102,10 +150,65 @@ export default function App() {
           ))}
         </nav>
 
+        {/* Workspace selector */}
+        <div className="relative shrink-0" ref={workspaceRef}>
+          <button
+            onClick={() => {
+              setShowWorkspaceDropdown(v => !v);
+              setWorkspaceInput("");
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 rounded-md transition-colors font-mono"
+            title="Switch workspace"
+          >
+            <span className="text-gray-500">@</span>
+            <span className="max-w-[120px] truncate">{userId}</span>
+            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showWorkspaceDropdown && (
+            <div className="absolute right-0 top-full mt-1 w-56 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+              <div className="p-2 border-b border-gray-800">
+                <form onSubmit={e => { e.preventDefault(); switchWorkspace(workspaceInput); }}>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={workspaceInput}
+                    onChange={e => setWorkspaceInput(e.target.value)}
+                    placeholder="Workspace name…"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-violet-500 font-mono"
+                  />
+                </form>
+              </div>
+              {recentWorkspaces.length > 0 && (
+                <div className="py-1">
+                  <p className="px-3 py-1 text-[10px] text-gray-600 uppercase tracking-wider">Recent</p>
+                  {recentWorkspaces.map(ws => (
+                    <button
+                      key={ws}
+                      onClick={() => switchWorkspace(ws)}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-mono truncate transition-colors ${
+                        ws === userId
+                          ? "text-violet-400 bg-violet-500/10"
+                          : "text-gray-300 hover:bg-gray-800"
+                      }`}
+                    >
+                      {ws === userId && <span className="mr-1">✓</span>}
+                      {ws}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {stats && (
           <span className="hidden sm:inline text-xs text-gray-500 shrink-0">{stats.total.toLocaleString()} memories</span>
         )}
       </header>
+
 
       {/* Stats bar */}
       {stats && (
