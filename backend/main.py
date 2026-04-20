@@ -7,6 +7,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI, HTTPException, Header, Query, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -527,6 +528,67 @@ async def import_memories(req: ImportRequest, x_api_key: str = Header(default=""
             errors += 1
 
     return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+_INGEST_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "The memory, self-contained and reusable"},
+            "tags": {"type": "array", "items": {"type": "string"}, "description": "1-3 lowercase topic tags"},
+        },
+        "required": ["content"],
+    },
+}
+
+
+class IngestRequest(BaseModel):
+    content: str = ""
+    url: str = ""
+    adapter: Optional[str] = None
+    user_id: str = "default"
+
+
+@app.post("/ingest/extract")
+async def ingest_extract(req: IngestRequest, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    if _llm_adapter is None:
+        raise HTTPException(status_code=400, detail="No LLM configured")
+
+    source_text = req.content.strip()
+    source_url = ""
+
+    if req.url.strip():
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                r = await client.get(req.url.strip(), headers={"User-Agent": "memvue/2.0"})
+                r.raise_for_status()
+                source_text = r.text[:50_000]
+                source_url = req.url.strip()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+
+    if not source_text:
+        raise HTTPException(status_code=400, detail="No content to process")
+
+    try:
+        candidates = await _llm_adapter.extract(source_text, _INGEST_SCHEMA)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM extraction failed: {e}")
+
+    results = []
+    for c in candidates:
+        if not isinstance(c, dict) or not c.get("content", "").strip():
+            continue
+        meta: dict = {}
+        if c.get("tags"):
+            meta["tags"] = ", ".join(c["tags"]) if isinstance(c["tags"], list) else c["tags"]
+        if source_url:
+            meta["source_url"] = source_url
+        results.append({"content": c["content"].strip(), "metadata": meta})
+
+    return {"candidates": results, "count": len(results)}
 
 
 @app.get("/stats")

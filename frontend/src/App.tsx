@@ -45,6 +45,7 @@ export default function App() {
   const [llmTestMessage, setLLMTestMessage] = useState("");
   const [supportUrl, setSupportUrl] = useState("");
   const [appVersion, setAppVersion] = useState("");
+  const [llmConfigured, setLlmConfigured] = useState(false);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -70,6 +71,7 @@ export default function App() {
   useEffect(() => {
     checkHealth();
     api.adapters().then(setAdapters).catch(() => {});
+    api.features().then(f => setLlmConfigured(f.llm_configured)).catch(() => {});
   }, [checkHealth]);
 
   const loadStats = useCallback(async () => {
@@ -215,7 +217,7 @@ export default function App() {
       {/* Tab content */}
       <main className="flex-1 overflow-hidden">
         {tab === "all" && (
-          <AllMemories key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} />
+          <AllMemories key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} llmConfigured={llmConfigured} />
         )}
         {tab === "files" && (
           <LocalFiles key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} />

@@ -38,6 +38,16 @@ export interface LLMProvider {
   fields: string[]
 }
 
+export interface IngestCandidate {
+  content: string
+  metadata: Record<string, unknown>
+}
+
+export interface IngestResult {
+  candidates: IngestCandidate[]
+  count: number
+}
+
 export interface DuplicateEntry extends MemoryEntry {
   adapter_id: string
 }
@@ -181,6 +191,9 @@ export const api = {
     invalidateCache()
     return r
   },
+
+  ingest: (content: string, url: string, adapter?: string, userId?: string) =>
+    req<IngestResult>('POST', '/ingest/extract', { content, url, adapter, user_id: userId }),
 
   updateExtensions: async (extensions: string[]) => {
     const r = await req<{ ok: boolean; fs_extensions: string[]; fs_roots: string[] }>('PATCH', '/config', { fs_extensions: extensions })
