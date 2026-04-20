@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,22 @@ for _env in (Path(__file__).parent / ".env", Path(__file__).parent.parent / ".en
         break
 
 
+RUNTIME_CONFIG_PATH = Path(__file__).parent / "runtime-config.json"
+
+
+def load_runtime() -> dict:
+    if not RUNTIME_CONFIG_PATH.exists():
+        return {}
+    try:
+        return json.loads(RUNTIME_CONFIG_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_runtime(cfg: dict) -> None:
+    RUNTIME_CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+
+
 @dataclass
 class Mem0Config:
     url: str = ""
@@ -27,7 +44,7 @@ class Mem0Config:
 @dataclass
 class FilesystemConfig:
     roots: list[str] = field(default_factory=list)
-    extensions: list[str] = field(default_factory=lambda: [".md", ".txt"])
+    extensions: list[str] = field(default_factory=lambda: [".md"])
     exclude_dirs: list[str] = field(default_factory=list)
     max_depth: int = 6
     enabled: bool = False
@@ -44,12 +61,21 @@ class AppConfig:
 
 
 def load_config() -> AppConfig:
+    runtime = load_runtime()
     mem0_url = os.environ.get("MEM0_URL", "")
     mem0_key = os.environ.get("MEM0_API_KEY", "")
-    fs_roots_raw = os.environ.get("FS_ROOTS", "")
-    fs_roots = [r.strip() for r in fs_roots_raw.split(",") if r.strip()] if fs_roots_raw else []
-    fs_exts_raw = os.environ.get("FS_EXTENSIONS", ".md,.txt")
-    fs_exts = [e.strip() for e in fs_exts_raw.split(",") if e.strip()]
+
+    if "fs_roots" in runtime:
+        fs_roots = list(runtime["fs_roots"])
+    else:
+        fs_roots_raw = os.environ.get("FS_ROOTS", "")
+        fs_roots = [r.strip() for r in fs_roots_raw.split(",") if r.strip()] if fs_roots_raw else []
+
+    if "fs_extensions" in runtime:
+        fs_exts = list(runtime["fs_extensions"])
+    else:
+        fs_exts_raw = os.environ.get("FS_EXTENSIONS", ".md")
+        fs_exts = [e.strip() for e in fs_exts_raw.split(",") if e.strip()]
     fs_exclude_raw = os.environ.get("FS_EXCLUDE_DIRS", "")
     fs_exclude = [d.strip() for d in fs_exclude_raw.split(",") if d.strip()]
     fs_max_depth = int(os.environ.get("FS_MAX_DEPTH", "6"))

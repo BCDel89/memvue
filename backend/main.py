@@ -9,8 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
+from pathlib import Path
+
 from adapters import Memory, MemoryAdapter, MemoryStats, Mem0Adapter, FilesystemAdapter
-from config import load_config
+from config import load_config, load_runtime, save_runtime
 
 
 # --- build adapter registry from config ---
@@ -104,6 +106,17 @@ def _mem(m: Memory) -> dict:
 
 # --- routes ---
 
+def _fs_extensions() -> list[str]:
+    for adp in _adapters.values():
+        if isinstance(adp, FilesystemAdapter):
+            return sorted(adp.extensions)
+    return list(_config.filesystem.extensions)
+
+
+def _fs_roots() -> list[str]:
+    return [str(adp.root) for adp in _adapters.values() if isinstance(adp, FilesystemAdapter)]
+
+
 @app.get("/health")
 def health():
     return {
@@ -112,6 +125,8 @@ def health():
         "default_user_id": _config.mem0.user_id or "default",
         "agent_name": _config.agent_name,
         "graph_entry_points": _config.graph_entry_points,
+        "fs_extensions": _fs_extensions(),
+        "fs_roots": _fs_roots(),
     }
 
 
@@ -181,6 +196,66 @@ async def delete_memory(memory_id: str, adapter_id: str = Query(...), x_api_key:
         raise HTTPException(status_code=404, detail=f"Adapter '{adapter_id}' not found")
     await _adapters[adapter_id].delete(memory_id)
     return {"deleted": memory_id, "adapter": adapter_id}
+
+
+class ConfigPatch(BaseModel):
+    fs_extensions: Optional[list[str]] = None
+
+
+class FsRootRequest(BaseModel):
+    path: str
+
+
+@app.patch("/config")
+async def patch_config(patch: ConfigPatch, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    runtime = load_runtime()
+    if patch.fs_extensions is not None:
+        exts = [e if e.startswith(".") else f".{e}" for e in patch.fs_extensions if e.strip()]
+        runtime["fs_extensions"] = exts
+        for adp in _adapters.values():
+            if isinstance(adp, FilesystemAdapter):
+                adp.update_extensions(exts)
+    save_runtime(runtime)
+    return {"ok": True, "fs_extensions": _fs_extensions(), "fs_roots": _fs_roots()}
+
+
+@app.post("/config/fs-roots")
+async def add_fs_root(req: FsRootRequest, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    raw = req.path.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="path is required")
+
+    resolved = str(Path(raw).expanduser().resolve())
+    key = f"fs:{resolved}"
+    if key in _adapters:
+        return {"ok": True, "fs_roots": _fs_roots()}
+
+    _adapters[key] = FilesystemAdapter(
+        resolved,
+        list(_fs_extensions()),
+        extra_skip_dirs=_config.filesystem.exclude_dirs,
+        max_depth=_config.filesystem.max_depth,
+    )
+
+    runtime = load_runtime()
+    runtime["fs_roots"] = _fs_roots()
+    save_runtime(runtime)
+    return {"ok": True, "fs_roots": _fs_roots()}
+
+
+@app.delete("/config/fs-roots")
+async def remove_fs_root(path: str = Query(...), x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    resolved = str(Path(path).expanduser().resolve())
+    key = f"fs:{resolved}"
+    _adapters.pop(key, None)
+
+    runtime = load_runtime()
+    runtime["fs_roots"] = _fs_roots()
+    save_runtime(runtime)
+    return {"ok": True, "fs_roots": _fs_roots()}
 
 
 @app.get("/stats")

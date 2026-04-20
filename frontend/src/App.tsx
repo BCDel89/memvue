@@ -32,6 +32,10 @@ export default function App() {
   const [connected, setConnected] = useState<boolean | null>(null);
   const [agentName, setAgentName] = useState("agent");
   const [entryPoints, setEntryPoints] = useState<string[]>(["MEMORY.md", "CLAUDE.md"]);
+  const [extensionsInput, setExtensionsInput] = useState(".md");
+  const [fsRoots, setFsRoots] = useState<string[]>([]);
+  const [newRootInput, setNewRootInput] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -45,6 +49,8 @@ export default function App() {
       }
       if (h.agent_name) setAgentName(h.agent_name);
       if (h.graph_entry_points?.length) setEntryPoints(h.graph_entry_points);
+      if (h.fs_extensions?.length) setExtensionsInput(h.fs_extensions.join(","));
+      if (h.fs_roots) setFsRoots(h.fs_roots);
     } catch {
       setConnected(false);
     }
@@ -68,10 +74,40 @@ export default function App() {
     loadStats();
   }, [loadStats]);
 
-  function saveSettings() {
+  async function handleAddRoot() {
+    const path = newRootInput.trim();
+    if (!path) return;
+    try {
+      const r = await api.addFsRoot(path);
+      setFsRoots(r.fs_roots);
+      setNewRootInput("");
+      api.adapters().then(setAdapters).catch(() => {});
+      setRefreshKey(k => k + 1);
+    } catch (e) {
+      alert(`Failed to add directory: ${e}`);
+    }
+  }
+
+  async function handleRemoveRoot(path: string) {
+    try {
+      const r = await api.removeFsRoot(path);
+      setFsRoots(r.fs_roots);
+      api.adapters().then(setAdapters).catch(() => {});
+      setRefreshKey(k => k + 1);
+    } catch (e) {
+      alert(`Failed to remove directory: ${e}`);
+    }
+  }
+
+  async function saveSettings() {
     localStorage.setItem(API_KEY_KEY, apiKeyInput);
     localStorage.setItem(USER_ID_KEY, userIdInput);
     setUserId(userIdInput);
+    const exts = extensionsInput.split(",").map(e => e.trim()).filter(Boolean);
+    if (exts.length) {
+      try { await api.updateExtensions(exts) } catch { /* non-fatal */ }
+    }
+    setRefreshKey(k => k + 1);
     setShowSettings(false);
     checkHealth();
   }
@@ -149,12 +185,12 @@ export default function App() {
       {/* Tab content */}
       <main className="flex-1 overflow-hidden">
         {tab === "all" && (
-          <AllMemories adapters={adapters} userId={userId} onStatsChange={loadStats} />
+          <AllMemories key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} />
         )}
         {tab === "files" && (
-          <LocalFiles adapters={adapters} userId={userId} onStatsChange={loadStats} />
+          <LocalFiles key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} />
         )}
-        {tab === "graph" && <Graph userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
+        {tab === "graph" && <Graph key={refreshKey} userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
       </main>
 
       {/* Settings modal */}
@@ -193,6 +229,58 @@ export default function App() {
                 <p className="text-xs text-gray-600 mt-1">
                   Sent as <code className="text-gray-500">x-api-key</code> header
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">File Extensions</label>
+                <input
+                  type="text"
+                  value={extensionsInput}
+                  onChange={(e) => setExtensionsInput(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
+                  placeholder=".md"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  Comma-separated extensions to scan (e.g. <code className="text-gray-500">.md,.txt</code>)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Memory Directories</label>
+                <div className="space-y-1">
+                  {fsRoots.length === 0 && (
+                    <p className="text-xs text-gray-600 italic">No directories configured.</p>
+                  )}
+                  {fsRoots.map((root) => (
+                    <div key={root} className="flex items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1">
+                      <code className="flex-1 min-w-0 truncate text-xs text-gray-300" title={root}>{root}</code>
+                      <button
+                        onClick={() => handleRemoveRoot(root)}
+                        className="text-gray-500 hover:text-red-400 px-1 text-sm"
+                        title="Remove"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-1 mt-2">
+                  <input
+                    type="text"
+                    value={newRootInput}
+                    onChange={(e) => setNewRootInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddRoot() }}
+                    className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
+                    placeholder="/path/to/notes"
+                  />
+                  <button
+                    onClick={handleAddRoot}
+                    disabled={!newRootInput.trim()}
+                    className="px-3 py-2 text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-30 text-white rounded-lg transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
 
               <div className="text-xs text-gray-600 border-t border-gray-800 pt-3">

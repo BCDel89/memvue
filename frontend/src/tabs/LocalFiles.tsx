@@ -6,6 +6,8 @@ import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 
+type SortKey = 'newest' | 'oldest' | 'longest' | 'shortest' | 'az' | 'za'
+
 interface Props {
   adapters: AdapterInfo[]
   userId: string
@@ -18,22 +20,19 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
-  const [selectedAdapter, setSelectedAdapter] = useState<string>(fsAdapters[0]?.id ?? '')
+  const [sort, setSort] = useState<SortKey>('newest')
+  const [sourceFilter, setSourceFilter] = useState<string>('all')
+  const [activeTag, setActiveTag] = useState<[string, string] | null>(null)
   const [modal, setModal] = useState<{ open: boolean; editing?: MemoryEntry }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
 
-  useEffect(() => {
-    if (!selectedAdapter && fsAdapters[0]) setSelectedAdapter(fsAdapters[0].id)
-  }, [adapters])
-  const [activeTag, setActiveTag] = useState<[string, string] | null>(null)
-
   async function load() {
-    if (!selectedAdapter) return
+    if (!fsAdapters.length) return
     setLoading(true)
     setError('')
     try {
-      const data = await api.listMemories(selectedAdapter, 5000, userId)
-      setFiles(data)
+      const lists = await Promise.all(fsAdapters.map(a => api.listMemories(a.id, 5000, userId)))
+      setFiles(lists.flat())
     } catch (e) {
       setError(String(e))
     } finally {
@@ -41,25 +40,38 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
     }
   }
 
-  useEffect(() => { load() }, [selectedAdapter])
+  useEffect(() => { load() }, [userId, adapters])
+
+  const sources = useMemo(() =>
+    ['all', ...Array.from(new Set(files.map(f => f.source)))],
+    [files]
+  )
 
   const filtered = useMemo(() => {
     let list = files
+    if (sourceFilter !== 'all') list = list.filter(f => f.source === sourceFilter)
     if (activeTag) list = list.filter(f =>
       memoryTags(f).some(([k, v]) => k === activeTag[0] && v === activeTag[1])
     )
-    if (!filter) return list
-    const q = filter.toLowerCase()
-    return list.filter(f =>
-      f.content.toLowerCase().includes(q) ||
-      f.id.toLowerCase().includes(q) ||
-      String(f.metadata?.filename ?? '').toLowerCase().includes(q)
-    )
-  }, [files, filter, activeTag])
-
-  function handleDelete(m: MemoryEntry) {
-    setDeleteTarget(m)
-  }
+    if (filter) {
+      const q = filter.toLowerCase()
+      list = list.filter(f =>
+        f.content.toLowerCase().includes(q) ||
+        f.id.toLowerCase().includes(q) ||
+        String(f.metadata?.filename ?? '').toLowerCase().includes(q)
+      )
+    }
+    return [...list].sort((a, b) => {
+      switch (sort) {
+        case 'newest':   return (b.created_at ?? '').localeCompare(a.created_at ?? '')
+        case 'oldest':   return (a.created_at ?? '').localeCompare(b.created_at ?? '')
+        case 'longest':  return b.content.length - a.content.length
+        case 'shortest': return a.content.length - b.content.length
+        case 'az':       return a.content.localeCompare(b.content)
+        case 'za':       return b.content.localeCompare(a.content)
+      }
+    })
+  }, [files, filter, sort, sourceFilter, activeTag])
 
   async function confirmDelete() {
     if (!deleteTarget) return
@@ -85,7 +97,7 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
     }
   }
 
-  if (fsAdapters.length === 0) {
+  if (!fsAdapters.length) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
         No filesystem adapters configured. Set <code className="mx-1 bg-gray-800 px-1 rounded">FS_ROOTS</code> in your .env.
@@ -96,21 +108,24 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-gray-800">
-        {fsAdapters.length > 1 && (
-          <select
-            value={selectedAdapter}
-            onChange={e => setSelectedAdapter(e.target.value)}
-            className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-300 focus:outline-none"
-          >
-            {fsAdapters.map(a => <option key={a.id} value={a.id}>{a.id.replace('fs:', '')}</option>)}
-          </select>
-        )}
         <input
           value={filter}
           onChange={e => setFilter(e.target.value)}
           placeholder="Filter files…"
           className="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
         />
+        <select
+          value={sort}
+          onChange={e => setSort(e.target.value as SortKey)}
+          className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-300 focus:outline-none"
+        >
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="longest">Longest</option>
+          <option value="shortest">Shortest</option>
+          <option value="az">A→Z</option>
+          <option value="za">Z→A</option>
+        </select>
         <button
           onClick={() => setModal({ open: true })}
           className="px-3 py-2 rounded-lg text-sm bg-brand-600 hover:bg-brand-700 text-white"
@@ -119,35 +134,55 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
         </button>
       </div>
 
+      {sources.length > 2 && (
+        <div className="flex gap-2 px-6 py-2 border-b border-gray-800 overflow-x-auto">
+          {sources.map(s => (
+            <button
+              key={s}
+              onClick={() => setSourceFilter(s)}
+              className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
+                ${sourceFilter === s
+                  ? 'bg-brand-600 border-brand-600 text-white'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
       {activeTag && (
         <div className="flex items-center gap-2 px-6 py-2 bg-violet-900/20 border-b border-violet-800/40 text-xs">
           <span className="text-violet-300">tag: {activeTag[0]}: {activeTag[1]}</span>
           <button onClick={() => setActiveTag(null)} className="text-violet-400 hover:text-violet-200">✕ clear</button>
         </div>
       )}
+
       <div className="px-6 py-2 text-xs text-gray-600">
-        {filtered.length.toLocaleString()} files
+        {filtered.length.toLocaleString()}{filtered.length !== files.length ? ` of ${files.length.toLocaleString()}` : ''} files
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-3">
-        {(loading || !selectedAdapter) && (
+        {loading && (
           <div className="py-12">
             <Loading messages={["scanning files…", "reading markdown…", "parsing frontmatter…"]} />
           </div>
         )}
         {error && <p className="text-sm text-red-400 py-4">{error}</p>}
-        {!loading && selectedAdapter && !error && filtered.length === 0 && (
+        {!loading && !error && filtered.length === 0 && (
           <p className="text-sm text-gray-600 py-8 text-center">No files found.</p>
         )}
-        {filtered.map(f => (
+        {!loading && filtered.map(f => (
           <MemoryCard
             key={f.id}
             memory={f}
             highlight={filter}
-            onDelete={handleDelete}
+            onDelete={m => setDeleteTarget(m)}
             onEdit={f => setModal({ open: true, editing: f })}
             activeTag={activeTag}
-            onTagClick={(tag) => setActiveTag(prev => prev && prev[0] === tag[0] && prev[1] === tag[1] ? null : tag)}
+            onTagClick={tag => setActiveTag(prev =>
+              prev && prev[0] === tag[0] && prev[1] === tag[1] ? null : tag
+            )}
           />
         ))}
       </div>

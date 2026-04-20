@@ -1,11 +1,21 @@
 import { useState } from 'react'
 import type { MemoryEntry } from '../api/client'
 
+const SKIP_META = new Set(['path', 'filename'])
+
+export function memoryTags(m: MemoryEntry): [string, string][] {
+  return Object.entries(m.metadata ?? {})
+    .filter(([k]) => !SKIP_META.has(k))
+    .map(([k, v]) => [k, String(v)])
+}
+
 interface Props {
   memory: MemoryEntry
   onDelete?: (m: MemoryEntry) => void
   onEdit?: (m: MemoryEntry) => void
   highlight?: string
+  activeTag?: [string, string] | null
+  onTagClick?: (tag: [string, string]) => void
 }
 
 function sourceColor(source: string) {
@@ -25,7 +35,7 @@ function highlightText(text: string, q: string) {
   )
 }
 
-export function MemoryCard({ memory, onDelete, onEdit, highlight = '' }: Props) {
+export function MemoryCard({ memory, onDelete, onEdit, highlight = '', activeTag, onTagClick }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -40,6 +50,7 @@ export function MemoryCard({ memory, onDelete, onEdit, highlight = '' }: Props) 
 
   const filename = memory.metadata?.filename as string | undefined
   const path = memory.metadata?.path as string | undefined
+  const tags = memoryTags(memory)
 
   return (
     <div className="group relative rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-700 transition-colors">
@@ -75,7 +86,29 @@ export function MemoryCard({ memory, onDelete, onEdit, highlight = '' }: Props) 
         </button>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-600">
+      {tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {tags.map(([k, v]) => {
+            const isActive = activeTag && activeTag[0] === k && activeTag[1] === v
+            return (
+              <button
+                key={k}
+                onClick={() => onTagClick?.([k, v])}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors border
+                  ${isActive
+                    ? 'bg-violet-600 border-violet-500 text-white'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-300'
+                  }`}
+              >
+                <span className="text-gray-500">{k}</span>
+                <span>{v}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-600">
         {filename && (
           <span className="font-mono bg-gray-800 px-1.5 py-0.5 rounded text-gray-500" title={path}>{filename}</span>
         )}

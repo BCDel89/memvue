@@ -166,6 +166,10 @@ class FilesystemAdapter(MemoryAdapter):
             path.unlink()
         self._scan_ts = 0.0  # invalidate cache
 
+    def update_extensions(self, extensions: list[str]) -> None:
+        self.extensions = set(extensions)
+        self._scan_ts = 0.0  # invalidate cache
+
     async def stats(self, user_id: str = "default") -> MemoryStats:
         paths = await self._scan()
         by_ext: dict[str, int] = {}

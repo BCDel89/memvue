@@ -99,5 +99,23 @@ export const api = {
 
   stats: (userId?: string) => req<Stats>('GET', `/stats${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`),
 
-  health: () => req<{ status: string; adapters: string[]; default_user_id?: string; agent_name?: string; graph_entry_points?: string[] }>('GET', '/health'),
+  health: () => req<{ status: string; adapters: string[]; default_user_id?: string; agent_name?: string; graph_entry_points?: string[]; fs_extensions?: string[]; fs_roots?: string[] }>('GET', '/health'),
+
+  updateExtensions: async (extensions: string[]) => {
+    const r = await req<{ ok: boolean; fs_extensions: string[]; fs_roots: string[] }>('PATCH', '/config', { fs_extensions: extensions })
+    invalidateCache()
+    return r
+  },
+
+  addFsRoot: async (path: string) => {
+    const r = await req<{ ok: boolean; fs_roots: string[] }>('POST', '/config/fs-roots', { path })
+    invalidateCache()
+    return r
+  },
+
+  removeFsRoot: async (path: string) => {
+    const r = await req<{ ok: boolean; fs_roots: string[] }>('DELETE', `/config/fs-roots?path=${encodeURIComponent(path)}`)
+    invalidateCache()
+    return r
+  },
 }
