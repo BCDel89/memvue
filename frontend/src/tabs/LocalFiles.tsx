@@ -6,6 +6,14 @@ import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 
+function shortSource(src: string): string {
+  if (src.startsWith('fs:')) {
+    const seg = src.replace('fs:', '').split('/').filter(Boolean).pop() ?? src
+    return `fs:${seg}`
+  }
+  return src
+}
+
 type SortKey = 'newest' | 'oldest' | 'longest' | 'shortest' | 'az' | 'za'
 
 interface Props {
@@ -140,12 +148,13 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
             <button
               key={s}
               onClick={() => setSourceFilter(s)}
+              title={s}
               className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
                 ${sourceFilter === s
                   ? 'bg-brand-600 border-brand-600 text-white'
                   : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}
             >
-              {s}
+              {shortSource(s)}
             </button>
           ))}
         </div>

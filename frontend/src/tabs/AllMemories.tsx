@@ -6,6 +6,14 @@ import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 
+function shortSource(src: string): string {
+  if (src.startsWith('fs:')) {
+    const seg = src.replace('fs:', '').split('/').filter(Boolean).pop() ?? src
+    return `fs:${seg}`
+  }
+  return src
+}
+
 type SortKey = 'newest' | 'oldest' | 'longest' | 'shortest' | 'az' | 'za'
 
 interface Props {
@@ -156,7 +164,7 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
             value={query}
             onChange={e => handleQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Filter… (Enter for semantic search, Esc to reset)"
+            placeholder="Filter… (↵ semantic search)"
             className="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
           />
           <button
@@ -214,12 +222,13 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
             <button
               key={s}
               onClick={() => setSourceFilter(s)}
+              title={s}
               className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
                 ${sourceFilter === s
                   ? 'bg-brand-600 border-brand-600 text-white'
                   : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}
             >
-              {s}
+              {shortSource(s)}
             </button>
           ))}
         </div>
