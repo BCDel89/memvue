@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import type { MemoryEntry, AdapterInfo } from '../api/client'
+
+const MarkdownEditor = lazy(() => import('./MarkdownEditor').then(m => ({ default: m.MarkdownEditor })))
 
 interface Props {
   memory?: MemoryEntry | null
@@ -58,14 +60,15 @@ export function MemoryModal({ memory, adapters, onSave, onClose }: Props) {
           )}
 
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Content</label>
-            <textarea
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              rows={10}
-              className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-brand-500 resize-y"
-              autoFocus
-            />
+            <label className="text-xs text-gray-500 mb-1 block">Content <span className="text-gray-600">(Cmd+S to save)</span></label>
+            <Suspense fallback={<div className="h-52 rounded-lg border border-gray-700 bg-gray-800 animate-pulse" />}>
+              <MarkdownEditor
+                value={content}
+                onChange={setContent}
+                onSave={handleSave}
+                autoFocus
+              />
+            </Suspense>
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
