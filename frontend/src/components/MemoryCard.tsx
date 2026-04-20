@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { MemoryEntry } from '../api/client'
+import type { SyncStatus } from '../tabs/LocalFiles'
 
 const SKIP_META = new Set(['path', 'filename', 'consolidated_from', 'consolidated_at', 'stale', 'reviewed_at'])
 
@@ -23,6 +24,8 @@ interface Props {
   onDelete?: (m: MemoryEntry) => void
   onEdit?: (m: MemoryEntry) => void
   onMetadataUpdate?: (m: MemoryEntry, metadata: Record<string, unknown>) => Promise<void>
+  onSync?: (m: MemoryEntry) => void
+  syncStatus?: SyncStatus
   highlight?: string
   activeTag?: [string, string] | null
   onTagClick?: (tag: [string, string]) => void
@@ -32,6 +35,12 @@ function sourceColor(source: string) {
   if (source === 'mem0') return 'bg-violet-900/60 text-violet-300 border-violet-700'
   if (source.startsWith('fs:')) return 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
   return 'bg-gray-800 text-gray-400 border-gray-700'
+}
+
+function shortFsPath(filePath: string): string {
+  const segs = filePath.split('/').filter(Boolean)
+  if (segs.length <= 3) return filePath
+  return `…/${segs.slice(-3).join('/')}`
 }
 
 function highlightText(text: string, q: string) {
@@ -47,13 +56,16 @@ function highlightText(text: string, q: string) {
 
 let _rowId = 0
 
-export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlight = '', activeTag, onTagClick }: Props) {
+export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, onSync, syncStatus, highlight = '', activeTag, onTagClick }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [editingMeta, setEditingMeta] = useState(false)
   const [flagging, setFlagging] = useState(false)
+  const [expandedSource, setExpandedSource] = useState(false)
 
-  const stale = isStale(memory)
+  const isFs = memory.source.startsWith('fs:')
+  const isMem0 = memory.source === 'mem0'
+  const stale = isMem0 && isStale(memory)
   const [metaRows, setMetaRows] = useState<{ id: number; key: string; val: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -141,11 +153,21 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
 
   return (
     <div className="group relative rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-700 transition-colors">
-      <div className="flex items-start justify-between gap-3 mb-2">
+      <div className="mb-2 space-y-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${sourceColor(memory.source)}`}>
-            {memory.source === 'mem0' ? '⬡' : '⬢'} {memory.source}
-          </span>
+          {isFs ? (
+            <button
+              onClick={() => setExpandedSource(s => !s)}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border font-mono break-all text-left transition-colors ${sourceColor(memory.source)} hover:brightness-125`}
+              title={expandedSource ? 'Click to collapse' : (path ?? memory.source)}
+            >
+              ⬢ {expandedSource ? (path ?? memory.source) : shortFsPath(path ?? memory.source.slice(3))}
+            </button>
+          ) : (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${sourceColor(memory.source)}`}>
+              ⬡ {memory.source}
+            </span>
+          )}
           {stale && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-900/50 text-amber-300 border-amber-700">
               stale
@@ -156,7 +178,7 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
           <button onClick={copy} className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400">
             {copied ? '✓' : 'copy'}
           </button>
-          {onMetadataUpdate && stale && (
+          {onMetadataUpdate && isMem0 && stale && (
             <button
               onClick={markReviewed}
               disabled={flagging}
@@ -166,7 +188,7 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
               reviewed ✓
             </button>
           )}
-          {onMetadataUpdate && !stale && (
+          {onMetadataUpdate && isMem0 && !stale && (
             <button
               onClick={flagStale}
               disabled={flagging}
@@ -188,6 +210,22 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
               tags
             </button>
           )}
+          {onSync && isFs && syncStatus !== 'synced' && (
+            <button
+              onClick={() => onSync(memory)}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                syncStatus === 'modified'
+                  ? 'bg-amber-900/40 hover:bg-amber-900/60 text-amber-400 hover:text-amber-300'
+                  : 'bg-gray-800 hover:bg-emerald-900/60 text-gray-400 hover:text-emerald-300'
+              }`}
+              title={syncStatus === 'modified' ? 'File changed since last sync' : 'Sync to mem0'}
+            >
+              {syncStatus === 'modified' ? '↑ changes' : '↑ mem0'}
+            </button>
+          )}
+          {isFs && syncStatus === 'synced' && (
+            <span className="px-2 py-1 text-xs text-emerald-600" title="Already synced to mem0">✓ synced</span>
+          )}
           {onEdit && (
             <button onClick={() => onEdit(memory)} className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400">
               edit
@@ -206,11 +244,14 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
         dangerouslySetInnerHTML={{ __html: highlightText(displayText, highlight) }}
       />
 
-      {isLong && (
-        <button onClick={() => setExpanded(!expanded)} className="mt-1 text-xs text-gray-500 hover:text-gray-300">
-          {expanded ? 'show less' : 'show more'}
-        </button>
-      )}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="mt-3 w-full flex items-center gap-2 text-xs text-gray-600 hover:text-gray-400 transition-colors group"
+      >
+        <span className="flex-1 h-px bg-gray-800 group-hover:bg-gray-700 transition-colors" />
+        <span>{expanded ? '↑ show less' : isLong ? '↓ show more' : '↓ details'}</span>
+        <span className="flex-1 h-px bg-gray-800 group-hover:bg-gray-700 transition-colors" />
+      </button>
 
       {/* Inline metadata editor */}
       {editingMeta && (
@@ -292,14 +333,43 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-600">
-        {filename && (
-          <span className="font-mono bg-gray-800 px-1.5 py-0.5 rounded text-gray-500" title={path}>{filename}</span>
-        )}
-        {memory.updated_at && (
-          <span>{new Date(memory.updated_at).toLocaleDateString()}</span>
-        )}
-      </div>
+      {!expanded && (
+        <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-gray-600">
+          {filename && (
+            <span className="font-mono bg-gray-800 px-1.5 py-0.5 rounded text-gray-500" title={path}>{filename}</span>
+          )}
+          {(memory.updated_at || memory.created_at) && (
+            <span>{new Date(memory.updated_at ?? memory.created_at ?? '').toLocaleDateString()}</span>
+          )}
+        </div>
+      )}
+
+      {expanded && (
+        <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+          {(memory.updated_at || memory.created_at) && (
+            <>
+              <span className="text-gray-600">updated</span>
+              <span className="text-gray-400">{new Date(memory.updated_at ?? memory.created_at ?? '').toLocaleString()}</span>
+            </>
+          )}
+          {memory.created_at && memory.updated_at && memory.created_at !== memory.updated_at && (
+            <>
+              <span className="text-gray-600">created</span>
+              <span className="text-gray-400">{new Date(memory.created_at).toLocaleString()}</span>
+            </>
+          )}
+          {path && (
+            <>
+              <span className="text-gray-600">path</span>
+              <span className="font-mono text-gray-500 break-all">{path}</span>
+            </>
+          )}
+          <span className="text-gray-600">length</span>
+          <span className="text-gray-400">{memory.content.length.toLocaleString()} chars · ~{Math.ceil(memory.content.split(/\s+/).length)} words</span>
+          <span className="text-gray-600">id</span>
+          <span className="font-mono text-gray-600 break-all">{memory.id}</span>
+        </div>
+      )}
     </div>
   )
 }
