@@ -5,6 +5,7 @@ import { MemoryCard, memoryTags, isStale } from '../components/MemoryCard'
 import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
+import { IngestModal } from '../components/IngestModal'
 
 function shortSource(src: string): string {
   if (src.startsWith('fs:')) {
@@ -20,9 +21,10 @@ interface Props {
   adapters: AdapterInfo[]
   userId: string
   onStatsChange: () => void
+  llmConfigured?: boolean
 }
 
-export function AllMemories({ adapters, userId, onStatsChange }: Props) {
+export function AllMemories({ adapters, userId, onStatsChange, llmConfigured }: Props) {
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -37,6 +39,7 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
   const [isSearching, setIsSearching] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [ingestOpen, setIngestOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -215,6 +218,15 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
           )}
         </button>
 
+        {llmConfigured && (
+          <button
+            onClick={() => setIngestOpen(true)}
+            className="px-3 py-1.5 sm:py-2 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 whitespace-nowrap"
+            title="Extract memories from pasted text or URL"
+          >
+            ↓ Ingest
+          </button>
+        )}
         {/* new */}
         <button
           onClick={() => setModal({ open: true })}
@@ -331,6 +343,14 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
           label={deleteTarget.metadata?.filename as string ?? deleteTarget.id}
           onConfirm={confirmDelete}
           onClose={() => setDeleteTarget(null)}
+        />
+      )}
+      {ingestOpen && (
+        <IngestModal
+          adapters={adapters}
+          userId={userId}
+          onClose={() => setIngestOpen(false)}
+          onSaved={() => { load(); onStatsChange() }}
         />
       )}
     </div>
