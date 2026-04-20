@@ -67,6 +67,9 @@ function invalidateCache() {
 }
 
 export const api = {
+  getMemory: (adapterId: string, memoryId: string) =>
+    req<MemoryEntry>('GET', `/memories/${encodeURIComponent(memoryId)}?adapter_id=${encodeURIComponent(adapterId)}`),
+
   listMemories: (adapter?: string, limit = 2000, userId?: string) => {
     const params = new URLSearchParams({ limit: String(limit) })
     if (adapter) params.set('adapter', adapter)

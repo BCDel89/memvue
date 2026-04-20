@@ -180,6 +180,18 @@ async def create_memory(req: CreateRequest, x_api_key: str = Header(default=""))
     return _mem(m)
 
 
+@app.get("/memories/{memory_id:path}")
+async def get_memory(memory_id: str, adapter_id: str = Query(...), x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    if adapter_id not in _adapters:
+        raise HTTPException(status_code=404, detail=f"Adapter '{adapter_id}' not found")
+    try:
+        m = await _adapters[adapter_id].get(memory_id)
+    except (FileNotFoundError, KeyError, Exception) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _mem(m)
+
+
 @app.put("/memories/{memory_id:path}")
 async def update_memory(memory_id: str, req: UpdateRequest, adapter_id: str = Query(...), x_api_key: str = Header(default="")):
     check_auth(x_api_key)

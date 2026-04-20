@@ -45,6 +45,7 @@ const COL_GAP = 24;    // horizontal gap between siblings
 const MD_LINK_RE = /\[([^\]]+)\]\(([^)\s]+)\)/g;
 const BACKTICK_REF_RE = /`([a-zA-Z0-9_./-]+\.(?:md|txt))`/g;
 const BARE_PATH_RE = /(?:^|[\s(])([a-zA-Z0-9_-]+\/[a-zA-Z0-9_/.-]+\.(?:md|txt))/g;
+const MEM0_LINK_RE = /mem0:\/\/([a-f0-9-]{36})/g;
 const MEM0_LIMIT = 6;
 
 function nodeLabel(m: MemoryEntry): string {
@@ -168,6 +169,12 @@ function buildMem0Query(memory: MemoryEntry): string {
   return [stem, firstHeading].filter(Boolean).join(" ").slice(0, 200);
 }
 
+function collectMem0Ids(content: string): string[] {
+  const ids: string[] = [];
+  for (const m of content.matchAll(MEM0_LINK_RE)) ids.push(m[1]);
+  return ids;
+}
+
 async function findRefs(
   memory: MemoryEntry,
   all: MemoryEntry[],
@@ -176,16 +183,30 @@ async function findRefs(
   const fsRefs = collectFsRefs(memory.content, all);
   const seen = new Set(fsRefs.map((r) => r.id));
 
-  // always broaden with related mem0 memories via semantic search
-  const query = buildMem0Query(memory);
-  const mem0Refs: MemoryEntry[] = [];
+  // resolve explicit mem0://uuid links
+  const mem0DirectRefs: MemoryEntry[] = [];
+  for (const id of collectMem0Ids(memory.content)) {
+    if (seen.has(id)) continue;
+    try {
+      const hit = await api.getMemory("mem0", id);
+      seen.add(hit.id);
+      mem0DirectRefs.push(hit);
+    } catch {
+      // memory may not exist or adapter not configured
+    }
+  }
+
+  // only fall back to semantic search when there are no explicit refs at all
+  const hasExplicit = fsRefs.length > 0 || mem0DirectRefs.length > 0;
+  const query = hasExplicit ? "" : buildMem0Query(memory);
+  const mem0SemanticRefs: MemoryEntry[] = [];
   if (query.trim()) {
     try {
       const hits = await api.search(query, "mem0", MEM0_LIMIT, userId);
       for (const h of hits) {
         if (!seen.has(h.id)) {
           seen.add(h.id);
-          mem0Refs.push(h);
+          mem0SemanticRefs.push(h);
         }
       }
     } catch (e) {
@@ -193,7 +214,7 @@ async function findRefs(
     }
   }
 
-  return [...fsRefs, ...mem0Refs];
+  return [...fsRefs, ...mem0DirectRefs, ...mem0SemanticRefs];
 }
 
 // ── custom node components ────────────────────────────────────────────────────
@@ -357,7 +378,8 @@ export default function Graph({ userId, adapters, agentName = "agent", entryPoin
   }
 
   function handleCopy(m: MemoryEntry) {
-    navigator.clipboard.writeText(m.content);
+    const text = m.source === "mem0" ? `mem0://${m.id}` : m.content;
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -491,7 +513,7 @@ export default function Graph({ userId, adapters, agentName = "agent", entryPoin
                 onClick={() => handleCopy(selected)}
                 className="flex-1 px-2 py-1.5 rounded-lg text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
               >
-                {copied ? "Copied!" : "Copy"}
+                {copied ? "Copied!" : selected.source === "mem0" ? "Copy link" : "Copy"}
               </button>
               <button
                 onClick={() => handleDelete(selected)}
