@@ -13,6 +13,7 @@ interface Props {
   memory: MemoryEntry
   onDelete?: (m: MemoryEntry) => void
   onEdit?: (m: MemoryEntry) => void
+  onMetadataUpdate?: (m: MemoryEntry, metadata: Record<string, unknown>) => Promise<void>
   highlight?: string
   activeTag?: [string, string] | null
   onTagClick?: (tag: [string, string]) => void
@@ -35,9 +36,15 @@ function highlightText(text: string, q: string) {
   )
 }
 
-export function MemoryCard({ memory, onDelete, onEdit, highlight = '', activeTag, onTagClick }: Props) {
+let _rowId = 0
+
+export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlight = '', activeTag, onTagClick }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [editingMeta, setEditingMeta] = useState(false)
+  const [metaRows, setMetaRows] = useState<{ id: number; key: string; val: string }[]>([])
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const isLong = memory.content.length > 300
   const displayText = isLong && !expanded ? memory.content.slice(0, 300) + '…' : memory.content
@@ -46,6 +53,52 @@ export function MemoryCard({ memory, onDelete, onEdit, highlight = '', activeTag
     navigator.clipboard.writeText(memory.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  function openMetaEditor() {
+    const rows = Object.entries(memory.metadata ?? {})
+      .filter(([k]) => !SKIP_META.has(k))
+      .map(([k, v]) => ({ id: _rowId++, key: k, val: String(v) }))
+    setMetaRows(rows)
+    setSaveError('')
+    setEditingMeta(true)
+  }
+
+  function closeMetaEditor() {
+    setEditingMeta(false)
+    setSaveError('')
+  }
+
+  function addRow() {
+    setMetaRows(r => [...r, { id: _rowId++, key: '', val: '' }])
+  }
+
+  function updateRow(id: number, field: 'key' | 'val', value: string) {
+    setMetaRows(r => r.map(row => row.id === id ? { ...row, [field]: value } : row))
+  }
+
+  function deleteRow(id: number) {
+    setMetaRows(r => r.filter(row => row.id !== id))
+  }
+
+  async function saveMeta() {
+    if (!onMetadataUpdate) return
+    setSaving(true)
+    setSaveError('')
+    try {
+      const systemMeta = Object.fromEntries(
+        Object.entries(memory.metadata ?? {}).filter(([k]) => SKIP_META.has(k))
+      )
+      const userMeta = Object.fromEntries(
+        metaRows.filter(r => r.key.trim()).map(r => [r.key.trim(), r.val])
+      )
+      await onMetadataUpdate(memory, { ...systemMeta, ...userMeta })
+      setEditingMeta(false)
+    } catch (e) {
+      setSaveError(String(e))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const filename = memory.metadata?.filename as string | undefined
@@ -62,6 +115,18 @@ export function MemoryCard({ memory, onDelete, onEdit, highlight = '', activeTag
           <button onClick={copy} className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400">
             {copied ? '✓' : 'copy'}
           </button>
+          {onMetadataUpdate && (
+            <button
+              onClick={editingMeta ? closeMetaEditor : openMetaEditor}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                editingMeta
+                  ? 'bg-violet-900 text-violet-300'
+                  : 'bg-gray-800 hover:bg-gray-700 text-gray-400'
+              }`}
+            >
+              tags
+            </button>
+          )}
           {onEdit && (
             <button onClick={() => onEdit(memory)} className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400">
               edit
@@ -86,7 +151,65 @@ export function MemoryCard({ memory, onDelete, onEdit, highlight = '', activeTag
         </button>
       )}
 
-      {tags.length > 0 && (
+      {/* Inline metadata editor */}
+      {editingMeta && (
+        <div className="mt-3 border-t border-gray-800 pt-3 space-y-2">
+          {metaRows.map(row => (
+            <div key={row.id} className="flex gap-1.5 items-center">
+              <input
+                type="text"
+                value={row.key}
+                onChange={e => updateRow(row.id, 'key', e.target.value)}
+                placeholder="key"
+                className="w-28 shrink-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-violet-500 font-mono"
+              />
+              <span className="text-gray-600 text-xs">:</span>
+              <input
+                type="text"
+                value={row.val}
+                onChange={e => updateRow(row.id, 'val', e.target.value)}
+                placeholder="value"
+                className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-violet-500"
+              />
+              <button
+                onClick={() => deleteRow(row.id)}
+                className="text-gray-600 hover:text-red-400 px-1 text-sm leading-none"
+                title="Remove"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          <button
+            onClick={addRow}
+            className="text-xs text-gray-500 hover:text-violet-400 transition-colors"
+          >
+            + add tag
+          </button>
+
+          {saveError && <p className="text-xs text-red-400">{saveError}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={saveMeta}
+              disabled={saving}
+              className="px-3 py-1 text-xs bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded-lg transition-colors"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={closeMetaEditor}
+              className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tag display (hidden while editing so changes are clear) */}
+      {!editingMeta && tags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {tags.map(([k, v]) => {
             const isActive = activeTag && activeTag[0] === k && activeTag[1] === v
