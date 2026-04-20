@@ -2,16 +2,18 @@ import { useState, useEffect, useCallback } from "react";
 import AllMemories from "./tabs/AllMemories";
 import LocalFiles from "./tabs/LocalFiles";
 import Graph from "./tabs/Graph";
+import { Consolidate } from "./tabs/Consolidate";
 import StatsBar from "./components/StatsBar";
 import { api } from "./api/client";
 import type { AdapterInfo, LLMConfig } from "./api/client";
 
-type Tab = "all" | "files" | "graph";
+type Tab = "all" | "files" | "graph" | "consolidate";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "All Memories" },
   { id: "files", label: "Local Files" },
   { id: "graph", label: "Graph" },
+  { id: "consolidate", label: "Consolidate" },
 ];
 
 const USER_ID_KEY = "memvue_user_id";
@@ -213,6 +215,7 @@ export default function App() {
           <LocalFiles key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} />
         )}
         {tab === "graph" && <Graph key={refreshKey} userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
+        {tab === "consolidate" && <Consolidate key={refreshKey} userId={userId} onStatsChange={loadStats} />}
       </main>
 
       {/* Settings modal */}

@@ -38,6 +38,15 @@ export interface LLMProvider {
   fields: string[]
 }
 
+export interface DuplicateEntry extends MemoryEntry {
+  adapter_id: string
+}
+
+export interface DuplicatesResult {
+  clusters: DuplicateEntry[][]
+  count: number
+}
+
 export interface LLMConfig {
   provider: string
   base_url: string
@@ -152,6 +161,24 @@ export const api = {
   },
 
   testLLM: () => req<{ ok: boolean; provider?: string; model?: string; error?: string | null }>('POST', '/llm/test'),
+
+  duplicates: (threshold = 0.5, userId?: string) => {
+    const params = new URLSearchParams({ threshold: String(threshold) })
+    if (userId) params.set('user_id', userId)
+    return req<DuplicatesResult>('GET', `/memories/duplicates?${params}`)
+  },
+
+  merge: async (keepId: string, keepAdapter: string, discardId: string, discardAdapter: string, mergedContent?: string) => {
+    const r = await req<{ merged: boolean; kept: string; discarded: string }>('POST', '/memories/merge', {
+      keep_id: keepId,
+      keep_adapter: keepAdapter,
+      discard_id: discardId,
+      discard_adapter: discardAdapter,
+      merged_content: mergedContent || undefined,
+    })
+    invalidateCache()
+    return r
+  },
 
   updateExtensions: async (extensions: string[]) => {
     const r = await req<{ ok: boolean; fs_extensions: string[]; fs_roots: string[] }>('PATCH', '/config', { fs_extensions: extensions })

@@ -285,6 +285,78 @@ async def remove_fs_root(path: str = Query(...), x_api_key: str = Header(default
     return {"ok": True, "fs_roots": _fs_roots()}
 
 
+def _jaccard(a: str, b: str) -> float:
+    sa = set(a.lower().split())
+    sb = set(b.lower().split())
+    if not sa and not sb:
+        return 1.0
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / len(sa | sb)
+
+
+@app.get("/memories/duplicates")
+async def find_duplicates(
+    user_id: str = Query(default="default"),
+    threshold: float = Query(default=0.5, ge=0.0, le=1.0),
+    limit: int = Query(default=500, le=2000),
+    x_api_key: str = Header(default=""),
+):
+    check_auth(x_api_key)
+    adapter_items = list(_adapters.items())
+    results = await asyncio.gather(*[adp.list(user_id=user_id, limit=limit) for _, adp in adapter_items])
+
+    all_mems: list[tuple] = []
+    for (adapter_key, _), mems in zip(adapter_items, results):
+        for m in mems:
+            all_mems.append((m, adapter_key))
+
+    n = len(all_mems)
+    clusters: list[list[dict]] = []
+    used: set[int] = set()
+
+    for i in range(n):
+        if i in used:
+            continue
+        m_a, ak_a = all_mems[i]
+        group = [{**_mem(m_a), "adapter_id": ak_a}]
+        group_indices = [i]
+        for j in range(i + 1, n):
+            if j in used:
+                continue
+            m_b, ak_b = all_mems[j]
+            if _jaccard(m_a.content, m_b.content) >= threshold:
+                group.append({**_mem(m_b), "adapter_id": ak_b})
+                group_indices.append(j)
+        if len(group) > 1:
+            for idx in group_indices:
+                used.add(idx)
+            clusters.append(group)
+
+    return {"clusters": clusters, "count": len(clusters)}
+
+
+class MergeRequest(BaseModel):
+    keep_id: str
+    keep_adapter: str
+    discard_id: str
+    discard_adapter: str
+    merged_content: Optional[str] = None
+
+
+@app.post("/memories/merge")
+async def merge_memories(req: MergeRequest, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    if req.keep_adapter not in _adapters:
+        raise HTTPException(status_code=404, detail=f"Adapter '{req.keep_adapter}' not found")
+    if req.discard_adapter not in _adapters:
+        raise HTTPException(status_code=404, detail=f"Adapter '{req.discard_adapter}' not found")
+    if req.merged_content:
+        await _adapters[req.keep_adapter].update(req.keep_id, req.merged_content, None)
+    await _adapters[req.discard_adapter].delete(req.discard_id)
+    return {"merged": True, "kept": req.keep_id, "discarded": req.discard_id}
+
+
 @app.get("/features")
 async def get_features():
     configured = _llm_adapter is not None
