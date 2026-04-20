@@ -591,6 +591,25 @@ async def ingest_extract(req: IngestRequest, x_api_key: str = Header(default="")
     return {"candidates": results, "count": len(results)}
 
 
+class SuggestTagsRequest(BaseModel):
+    content: str
+    taxonomy: Optional[list[str]] = None
+
+
+@app.post("/memories/suggest-tags")
+async def suggest_tags(req: SuggestTagsRequest, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    if _llm_adapter is None:
+        raise HTTPException(status_code=400, detail="No LLM configured")
+    if not req.content.strip():
+        return {"tags": []}
+    try:
+        tags = await _llm_adapter.tag(req.content.strip(), req.taxonomy)
+        return {"tags": tags[:10]}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM tagging failed: {e}")
+
+
 @app.get("/stats")
 async def get_stats(user_id: str = Query(default="default"), x_api_key: str = Header(default="")):
     check_auth(x_api_key)
