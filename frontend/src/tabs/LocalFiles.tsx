@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { api } from '../api/client'
 import type { MemoryEntry, AdapterInfo } from '../api/client'
 import { MemoryCard, memoryTags } from '../components/MemoryCard'
 import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
+import { SyncProgressModal } from '../components/SyncProgressModal'
 
 function shortSource(src: string): string {
   if (src.startsWith('fs:')) {
@@ -24,6 +25,7 @@ interface Props {
 
 export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
   const fsAdapters = adapters.filter(a => a.id.startsWith('fs:'))
+  const hasMem0 = adapters.some(a => a.id === 'mem0')
   const [files, setFiles] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -34,6 +36,14 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
   const [modal, setModal] = useState<{ open: boolean; editing?: MemoryEntry }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [syncState, setSyncState] = useState<{
+    running: boolean
+    total: number
+    done: number
+    errors: number
+    cancelled: boolean
+  } | null>(null)
+  const cancelRef = useRef(false)
 
   async function load() {
     if (!fsAdapters.length) return
@@ -108,6 +118,33 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
     }
   }
 
+  async function startSync() {
+    const targets = filtered
+    cancelRef.current = false
+    setSyncState({ running: true, total: targets.length, done: 0, errors: 0, cancelled: false })
+
+    let errors = 0
+    for (let i = 0; i < targets.length; i++) {
+      if (cancelRef.current) {
+        setSyncState(s => s ? { ...s, running: false, cancelled: true } : s)
+        return
+      }
+      const f = targets[i]
+      try {
+        await api.create(f.content, 'mem0', {
+          ...f.metadata,
+          synced_from_fs: f.source,
+          synced_at: new Date().toISOString(),
+        })
+      } catch {
+        errors++
+      }
+      setSyncState(s => s ? { ...s, done: i + 1, errors } : s)
+    }
+    setSyncState(s => s ? { ...s, running: false } : s)
+    onStatsChange()
+  }
+
   if (!fsAdapters.length) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
@@ -159,6 +196,16 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
           </button>
         )}
 
+        {hasMem0 && (
+          <button
+            onClick={startSync}
+            disabled={filtered.length === 0 || loading}
+            className="px-3 py-1.5 sm:py-2 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 whitespace-nowrap"
+            title={`Sync ${filtered.length} file${filtered.length !== 1 ? 's' : ''} to mem0`}
+          >
+            ↑ mem0
+          </button>
+        )}
         <button
           onClick={() => setModal({ open: true })}
           className="px-3 py-1.5 sm:py-2 rounded-lg text-sm bg-brand-600 hover:bg-brand-700 text-white whitespace-nowrap"
@@ -241,6 +288,13 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
           label={deleteTarget.metadata?.filename as string ?? deleteTarget.id}
           onConfirm={confirmDelete}
           onClose={() => setDeleteTarget(null)}
+        />
+      )}
+      {syncState && (
+        <SyncProgressModal
+          state={syncState}
+          onCancel={() => { cancelRef.current = true }}
+          onClose={() => setSyncState(null)}
         />
       )}
     </div>
