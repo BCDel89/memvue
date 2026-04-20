@@ -336,6 +336,7 @@ export function AllMemories({ adapters, userId, onStatsChange, llmConfigured }: 
           adapters={adapters}
           onSave={handleSave}
           onClose={() => setModal({ open: false })}
+          llmConfigured={llmConfigured}
         />
       )}
       {deleteTarget && (

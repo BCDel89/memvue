@@ -195,6 +195,9 @@ export const api = {
   ingest: (content: string, url: string, adapter?: string, userId?: string) =>
     req<IngestResult>('POST', '/ingest/extract', { content, url, adapter, user_id: userId }),
 
+  suggestTags: (content: string, taxonomy?: string[]) =>
+    req<{ tags: string[] }>('POST', '/memories/suggest-tags', { content, taxonomy }),
+
   updateExtensions: async (extensions: string[]) => {
     const r = await req<{ ok: boolean; fs_extensions: string[]; fs_roots: string[] }>('PATCH', '/config', { fs_extensions: extensions })
     invalidateCache()

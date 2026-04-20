@@ -220,7 +220,7 @@ export default function App() {
           <AllMemories key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} llmConfigured={llmConfigured} />
         )}
         {tab === "files" && (
-          <LocalFiles key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} />
+          <LocalFiles key={refreshKey} adapters={adapters} userId={userId} onStatsChange={loadStats} llmConfigured={llmConfigured} />
         )}
         {tab === "graph" && <Graph key={refreshKey} userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
         {tab === "consolidate" && <Consolidate key={refreshKey} userId={userId} onStatsChange={loadStats} />}

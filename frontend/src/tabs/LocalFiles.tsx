@@ -21,9 +21,10 @@ interface Props {
   adapters: AdapterInfo[]
   userId: string
   onStatsChange: () => void
+  llmConfigured?: boolean
 }
 
-export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
+export function LocalFiles({ adapters, userId, onStatsChange, llmConfigured }: Props) {
   const fsAdapters = adapters.filter(a => a.id.startsWith('fs:'))
   const hasMem0 = adapters.some(a => a.id === 'mem0')
   const [files, setFiles] = useState<MemoryEntry[]>([])
@@ -281,6 +282,7 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
           adapters={fsAdapters}
           onSave={handleSave}
           onClose={() => setModal({ open: false })}
+          llmConfigured={llmConfigured}
         />
       )}
       {deleteTarget && (
