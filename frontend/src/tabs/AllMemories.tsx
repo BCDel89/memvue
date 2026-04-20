@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { api } from '../api/client'
 import type { MemoryEntry, AdapterInfo } from '../api/client'
-import { MemoryCard } from '../components/MemoryCard'
+import { MemoryCard, memoryTags } from '../components/MemoryCard'
 import { MemoryModal } from '../components/MemoryModal'
+import { Loading } from '../components/Loading'
+import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 
 type SortKey = 'newest' | 'oldest' | 'longest' | 'shortest' | 'az' | 'za'
 
 interface Props {
   adapters: AdapterInfo[]
+  userId: string
   onStatsChange: () => void
 }
 
-export function AllMemories({ adapters, onStatsChange }: Props) {
+export function AllMemories({ adapters, userId, onStatsChange }: Props) {
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -20,7 +23,10 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
   const [sort, setSort] = useState<SortKey>('newest')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [modal, setModal] = useState<{ open: boolean; editing?: MemoryEntry }>({ open: false })
+  const [activeTag, setActiveTag] = useState<[string, string] | null>(null)
+  const [category, setCategory] = useState<string>('all')
   const [isSearching, setIsSearching] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -28,7 +34,7 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
     setLoading(true)
     setError('')
     try {
-      const data = await api.listMemories(undefined, 2000)
+      const data = await api.listMemories(undefined, 2000, userId)
       setMemories(data)
     } catch (e) {
       setError(String(e))
@@ -37,7 +43,7 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [userId])
 
   function handleQueryChange(val: string) {
     setQuery(val)
@@ -53,7 +59,7 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
     setIsSearching(true)
     setError('')
     try {
-      const data = await api.search(query, undefined, 50)
+      const data = await api.search(query, undefined, 50, userId)
       setMemories(data)
       setLiveFilter('')
     } catch (e) {
@@ -70,9 +76,32 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
 
   const sources = useMemo(() => ['all', ...Array.from(new Set(memories.map(m => m.source)))], [memories])
 
+  const categories = useMemo(() => {
+    const counts: Record<string, number> = {}
+    let uncategorized = 0
+    for (const m of memories) {
+      const t = m.metadata?.type as string | undefined
+      if (t) counts[t] = (counts[t] ?? 0) + 1
+      else uncategorized++
+    }
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
+    return [
+      ['all', memories.length] as [string, number],
+      ...sorted,
+      ...(uncategorized > 0 ? [['uncategorized', uncategorized] as [string, number]] : []),
+    ]
+  }, [memories])
+
   const filtered = useMemo(() => {
     let list = memories
     if (sourceFilter !== 'all') list = list.filter(m => m.source === sourceFilter)
+    if (category !== 'all') {
+      if (category === 'uncategorized') list = list.filter(m => !m.metadata?.type)
+      else list = list.filter(m => m.metadata?.type === category)
+    }
+    if (activeTag) list = list.filter(m =>
+      memoryTags(m).some(([k, v]) => k === activeTag[0] && v === activeTag[1])
+    )
     if (liveFilter) list = list.filter(m =>
       m.content.toLowerCase().includes(liveFilter.toLowerCase()) ||
       m.id.toLowerCase().includes(liveFilter.toLowerCase())
@@ -87,16 +116,22 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
         case 'za': return b.content.localeCompare(a.content)
       }
     })
-  }, [memories, liveFilter, sort, sourceFilter])
+  }, [memories, liveFilter, sort, sourceFilter, activeTag, category])
 
   async function handleDelete(m: MemoryEntry) {
-    if (!confirm('Delete this memory?')) return
+    setDeleteTarget(m)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
     try {
-      await api.delete(m.source, m.id)
-      setMemories(prev => prev.filter(x => x.id !== m.id))
+      await api.delete(deleteTarget.source, deleteTarget.id)
+      setMemories(prev => prev.filter(x => x.id !== deleteTarget.id))
       onStatsChange()
     } catch (e) {
       alert(String(e))
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -154,6 +189,24 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
         </button>
       </div>
 
+      {/* category pills */}
+      {categories.length > 1 && (
+        <div className="flex gap-2 px-6 py-2 border-b border-gray-800 overflow-x-auto">
+          {categories.map(([cat, count]) => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
+                ${category === cat
+                  ? 'bg-violet-600 border-violet-600 text-white'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}
+            >
+              {cat} <span className="opacity-70">({count})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* source pills */}
       {sources.length > 2 && (
         <div className="flex gap-2 px-6 py-2 border-b border-gray-800 overflow-x-auto">
@@ -172,6 +225,13 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
         </div>
       )}
 
+      {activeTag && (
+        <div className="flex items-center gap-2 px-6 py-2 bg-violet-900/20 border-b border-violet-800/40 text-xs">
+          <span className="text-violet-300">tag: {activeTag[0]}: {activeTag[1]}</span>
+          <button onClick={() => setActiveTag(null)} className="text-violet-400 hover:text-violet-200">✕ clear</button>
+        </div>
+      )}
+
       {/* count */}
       <div className="px-6 py-2 text-xs text-gray-600">
         {filtered.length.toLocaleString()} {filtered.length === memories.length ? '' : `of ${memories.length.toLocaleString()} `}memories
@@ -179,7 +239,11 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
 
       {/* list */}
       <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-3">
-        {loading && <p className="text-sm text-gray-500 py-8 text-center">Loading…</p>}
+        {loading && (
+          <div className="py-12">
+            <Loading messages={["loading memories…", "fetching from adapters…", "scanning local files…"]} />
+          </div>
+        )}
         {error && <p className="text-sm text-red-400 py-4">{error}</p>}
         {!loading && !error && filtered.length === 0 && (
           <p className="text-sm text-gray-600 py-8 text-center">No memories found.</p>
@@ -191,6 +255,8 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
             highlight={liveFilter}
             onDelete={handleDelete}
             onEdit={m => setModal({ open: true, editing: m })}
+            activeTag={activeTag}
+            onTagClick={(tag) => setActiveTag(prev => prev && prev[0] === tag[0] && prev[1] === tag[1] ? null : tag)}
           />
         ))}
       </div>
@@ -203,6 +269,15 @@ export function AllMemories({ adapters, onStatsChange }: Props) {
           onClose={() => setModal({ open: false })}
         />
       )}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          label={deleteTarget.metadata?.filename as string ?? deleteTarget.id}
+          onConfirm={confirmDelete}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   )
 }
+
+export default AllMemories

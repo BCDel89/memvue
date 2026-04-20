@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Header, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 from adapters import Memory, MemoryAdapter, MemoryStats, Mem0Adapter, FilesystemAdapter
@@ -20,7 +22,12 @@ def _build_adapters() -> dict[str, MemoryAdapter]:
         adapters["mem0"] = Mem0Adapter(cfg.mem0.url, cfg.mem0.api_key)
     for root in cfg.filesystem.roots:
         key = f"fs:{root}"
-        adapters[key] = FilesystemAdapter(root, cfg.filesystem.extensions)
+        adapters[key] = FilesystemAdapter(
+            root,
+            cfg.filesystem.extensions,
+            extra_skip_dirs=cfg.filesystem.exclude_dirs,
+            max_depth=cfg.filesystem.max_depth,
+        )
     return adapters
 
 
@@ -37,9 +44,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="memvue API", version="0.1.0", lifespan=lifespan)
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_config.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -87,7 +96,7 @@ def _mem(m: Memory) -> dict:
         id=m.id,
         content=m.content,
         source=m.source,
-        metadata=m.metadata,
+        metadata=m.metadata or {},
         created_at=m.created_at,
         updated_at=m.updated_at,
     ).model_dump()
@@ -101,6 +110,8 @@ def health():
         "status": "ok",
         "adapters": list(_adapters.keys()),
         "default_user_id": _config.mem0.user_id or "default",
+        "agent_name": _config.agent_name,
+        "graph_entry_points": _config.graph_entry_points,
     }
 
 
@@ -124,10 +135,8 @@ async def list_memories(
     targets = {adapter: _adapters[adapter]} if adapter and adapter in _adapters else _adapters
     if adapter and adapter not in _adapters:
         raise HTTPException(status_code=404, detail=f"Adapter '{adapter}' not found")
-    all_memories = []
-    for adp in targets.values():
-        all_memories.extend(await adp.list(user_id=user_id, limit=limit))
-    return [_mem(m) for m in all_memories]
+    results = await asyncio.gather(*[adp.list(user_id=user_id, limit=limit) for adp in targets.values()])
+    return [_mem(m) for ms in results for m in ms]
 
 
 @app.post("/memories/search")
@@ -156,8 +165,8 @@ async def create_memory(req: CreateRequest, x_api_key: str = Header(default=""))
     return _mem(m)
 
 
-@app.put("/memories/{adapter_id}/{memory_id:path}")
-async def update_memory(adapter_id: str, memory_id: str, req: UpdateRequest, x_api_key: str = Header(default="")):
+@app.put("/memories/{memory_id:path}")
+async def update_memory(memory_id: str, req: UpdateRequest, adapter_id: str = Query(...), x_api_key: str = Header(default="")):
     check_auth(x_api_key)
     if adapter_id not in _adapters:
         raise HTTPException(status_code=404, detail=f"Adapter '{adapter_id}' not found")
@@ -165,8 +174,8 @@ async def update_memory(adapter_id: str, memory_id: str, req: UpdateRequest, x_a
     return _mem(m)
 
 
-@app.delete("/memories/{adapter_id}/{memory_id:path}")
-async def delete_memory(adapter_id: str, memory_id: str, x_api_key: str = Header(default="")):
+@app.delete("/memories/{memory_id:path}")
+async def delete_memory(memory_id: str, adapter_id: str = Query(...), x_api_key: str = Header(default="")):
     check_auth(x_api_key)
     if adapter_id not in _adapters:
         raise HTTPException(status_code=404, detail=f"Adapter '{adapter_id}' not found")
@@ -177,9 +186,10 @@ async def delete_memory(adapter_id: str, memory_id: str, x_api_key: str = Header
 @app.get("/stats")
 async def get_stats(user_id: str = Query(default="default"), x_api_key: str = Header(default="")):
     check_auth(x_api_key)
+    keys = list(_adapters.keys())
+    stats_list = await asyncio.gather(*[adp.stats(user_id=user_id) for adp in _adapters.values()])
     combined: dict = {"total": 0, "sources": {}}
-    for key, adp in _adapters.items():
-        s = await adp.stats(user_id=user_id)
+    for key, s in zip(keys, stats_list):
         combined["total"] += s.total
         combined["sources"][key] = s.total
         if s.extra:

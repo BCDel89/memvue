@@ -1,15 +1,18 @@
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../api/client'
 import type { MemoryEntry, AdapterInfo } from '../api/client'
-import { MemoryCard } from '../components/MemoryCard'
+import { MemoryCard, memoryTags } from '../components/MemoryCard'
 import { MemoryModal } from '../components/MemoryModal'
+import { Loading } from '../components/Loading'
+import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 
 interface Props {
   adapters: AdapterInfo[]
+  userId: string
   onStatsChange: () => void
 }
 
-export function LocalFiles({ adapters, onStatsChange }: Props) {
+export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
   const fsAdapters = adapters.filter(a => a.id.startsWith('fs:'))
   const [files, setFiles] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -17,13 +20,19 @@ export function LocalFiles({ adapters, onStatsChange }: Props) {
   const [filter, setFilter] = useState('')
   const [selectedAdapter, setSelectedAdapter] = useState<string>(fsAdapters[0]?.id ?? '')
   const [modal, setModal] = useState<{ open: boolean; editing?: MemoryEntry }>({ open: false })
+  const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
+
+  useEffect(() => {
+    if (!selectedAdapter && fsAdapters[0]) setSelectedAdapter(fsAdapters[0].id)
+  }, [adapters])
+  const [activeTag, setActiveTag] = useState<[string, string] | null>(null)
 
   async function load() {
     if (!selectedAdapter) return
     setLoading(true)
     setError('')
     try {
-      const data = await api.listMemories(selectedAdapter, 5000)
+      const data = await api.listMemories(selectedAdapter, 5000, userId)
       setFiles(data)
     } catch (e) {
       setError(String(e))
@@ -35,23 +44,33 @@ export function LocalFiles({ adapters, onStatsChange }: Props) {
   useEffect(() => { load() }, [selectedAdapter])
 
   const filtered = useMemo(() => {
-    if (!filter) return files
+    let list = files
+    if (activeTag) list = list.filter(f =>
+      memoryTags(f).some(([k, v]) => k === activeTag[0] && v === activeTag[1])
+    )
+    if (!filter) return list
     const q = filter.toLowerCase()
-    return files.filter(f =>
+    return list.filter(f =>
       f.content.toLowerCase().includes(q) ||
       f.id.toLowerCase().includes(q) ||
       String(f.metadata?.filename ?? '').toLowerCase().includes(q)
     )
-  }, [files, filter])
+  }, [files, filter, activeTag])
 
-  async function handleDelete(m: MemoryEntry) {
-    if (!confirm(`Delete ${m.metadata?.filename ?? m.id}?`)) return
+  function handleDelete(m: MemoryEntry) {
+    setDeleteTarget(m)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
     try {
-      await api.delete(m.source, m.id)
-      setFiles(prev => prev.filter(x => x.id !== m.id))
+      await api.delete(deleteTarget.source, deleteTarget.id)
+      setFiles(prev => prev.filter(x => x.id !== deleteTarget.id))
       onStatsChange()
     } catch (e) {
       alert(String(e))
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -100,14 +119,24 @@ export function LocalFiles({ adapters, onStatsChange }: Props) {
         </button>
       </div>
 
+      {activeTag && (
+        <div className="flex items-center gap-2 px-6 py-2 bg-violet-900/20 border-b border-violet-800/40 text-xs">
+          <span className="text-violet-300">tag: {activeTag[0]}: {activeTag[1]}</span>
+          <button onClick={() => setActiveTag(null)} className="text-violet-400 hover:text-violet-200">✕ clear</button>
+        </div>
+      )}
       <div className="px-6 py-2 text-xs text-gray-600">
         {filtered.length.toLocaleString()} files
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-3">
-        {loading && <p className="text-sm text-gray-500 py-8 text-center">Loading…</p>}
+        {(loading || !selectedAdapter) && (
+          <div className="py-12">
+            <Loading messages={["scanning files…", "reading markdown…", "parsing frontmatter…"]} />
+          </div>
+        )}
         {error && <p className="text-sm text-red-400 py-4">{error}</p>}
-        {!loading && !error && filtered.length === 0 && (
+        {!loading && selectedAdapter && !error && filtered.length === 0 && (
           <p className="text-sm text-gray-600 py-8 text-center">No files found.</p>
         )}
         {filtered.map(f => (
@@ -117,6 +146,8 @@ export function LocalFiles({ adapters, onStatsChange }: Props) {
             highlight={filter}
             onDelete={handleDelete}
             onEdit={f => setModal({ open: true, editing: f })}
+            activeTag={activeTag}
+            onTagClick={(tag) => setActiveTag(prev => prev && prev[0] === tag[0] && prev[1] === tag[1] ? null : tag)}
           />
         ))}
       </div>
@@ -129,6 +160,15 @@ export function LocalFiles({ adapters, onStatsChange }: Props) {
           onClose={() => setModal({ open: false })}
         />
       )}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          label={deleteTarget.metadata?.filename as string ?? deleteTarget.id}
+          onConfirm={confirmDelete}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   )
 }
+
+export default LocalFiles

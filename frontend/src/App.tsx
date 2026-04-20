@@ -4,6 +4,7 @@ import LocalFiles from "./tabs/LocalFiles";
 import Graph from "./tabs/Graph";
 import StatsBar from "./components/StatsBar";
 import { api } from "./api/client";
+import type { AdapterInfo } from "./api/client";
 
 type Tab = "all" | "files" | "graph";
 
@@ -21,6 +22,7 @@ export default function App() {
   const [userId, setUserId] = useState(
     () => localStorage.getItem(USER_ID_KEY) ?? "default"
   );
+  const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [stats, setStats] = useState<{ total: number; sources: Record<string, number> } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(
@@ -28,16 +30,21 @@ export default function App() {
   );
   const [userIdInput, setUserIdInput] = useState(userId);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [agentName, setAgentName] = useState("agent");
+  const [entryPoints, setEntryPoints] = useState<string[]>(["MEMORY.md", "CLAUDE.md"]);
 
   const checkHealth = useCallback(async () => {
     try {
       const h = await api.health();
       setConnected(true);
-      if (!localStorage.getItem(USER_ID_KEY) && h.default_user_id) {
+      const stored = localStorage.getItem(USER_ID_KEY);
+      if ((!stored || stored === "default") && h.default_user_id) {
         localStorage.setItem(USER_ID_KEY, h.default_user_id);
         setUserId(h.default_user_id);
         setUserIdInput(h.default_user_id);
       }
+      if (h.agent_name) setAgentName(h.agent_name);
+      if (h.graph_entry_points?.length) setEntryPoints(h.graph_entry_points);
     } catch {
       setConnected(false);
     }
@@ -45,6 +52,7 @@ export default function App() {
 
   useEffect(() => {
     checkHealth();
+    api.adapters().then(setAdapters).catch(() => {});
   }, [checkHealth]);
 
   const loadStats = useCallback(async () => {
@@ -69,7 +77,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+    <div className="h-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="border-b border-gray-800 px-4 h-12 flex items-center gap-4 shrink-0">
         <span className="font-semibold tracking-tight text-white">memvue</span>
@@ -141,12 +149,12 @@ export default function App() {
       {/* Tab content */}
       <main className="flex-1 overflow-hidden">
         {tab === "all" && (
-          <AllMemories userId={userId} onStatsChange={loadStats} />
+          <AllMemories adapters={adapters} userId={userId} onStatsChange={loadStats} />
         )}
         {tab === "files" && (
-          <LocalFiles userId={userId} onStatsChange={loadStats} />
+          <LocalFiles adapters={adapters} userId={userId} onStatsChange={loadStats} />
         )}
-        {tab === "graph" && <Graph userId={userId} />}
+        {tab === "graph" && <Graph userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
       </main>
 
       {/* Settings modal */}
