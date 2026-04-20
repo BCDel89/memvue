@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import json
+import zipfile
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Header, Query, Body
+from fastapi import FastAPI, HTTPException, Header, Query, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from pathlib import Path
@@ -438,6 +442,89 @@ async def test_llm(x_api_key: str = Header(default="")):
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/export")
+async def export_memories(
+    format: str = Query(default="json"),
+    user_id: str = Query(default="default"),
+    adapter: Optional[str] = Query(default=None),
+    x_api_key: str = Header(default=""),
+):
+    check_auth(x_api_key)
+    targets = {adapter: _adapters[adapter]} if adapter and adapter in _adapters else _adapters
+    if adapter and adapter not in _adapters:
+        raise HTTPException(status_code=404, detail=f"Adapter '{adapter}' not found")
+
+    results = await asyncio.gather(*[adp.list(user_id=user_id, limit=50_000) for adp in targets.values()])
+    memories = [m for ms in results for m in ms]
+
+    if format == "markdown-zip":
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for i, m in enumerate(memories):
+                filename = str(m.metadata.get("filename", "") or f"memory-{i+1}.md").replace("/", "_")
+                if not filename.endswith(".md"):
+                    filename += ".md"
+                lines = [f"---", f"id: {m.id}", f"source: {m.source}"]
+                if m.created_at:
+                    lines.append(f"created_at: {m.created_at}")
+                if m.metadata:
+                    for k, v in m.metadata.items():
+                        lines.append(f"{k}: {v}")
+                lines += ["---", "", m.content]
+                zf.writestr(filename, "\n".join(lines))
+        buf.seek(0)
+        return Response(
+            content=buf.read(),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=memvue-export.zip"},
+        )
+
+    # default: JSON
+    data = [_mem(m) for m in memories]
+    return Response(
+        content=json.dumps(data, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=memvue-export.json"},
+    )
+
+
+class ImportRequest(BaseModel):
+    memories: list[dict]
+    adapter: Optional[str] = None
+    user_id: str = "default"
+    skip_duplicates: bool = True
+
+
+@app.post("/import")
+async def import_memories(req: ImportRequest, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    adapter_id = req.adapter or (next(iter(_adapters)) if _adapters else None)
+    if not adapter_id or adapter_id not in _adapters:
+        raise HTTPException(status_code=400, detail="No valid adapter specified")
+
+    existing_contents: set[str] = set()
+    if req.skip_duplicates:
+        existing = await _adapters[adapter_id].list(user_id=req.user_id, limit=50_000)
+        existing_contents = {m.content.strip() for m in existing}
+
+    imported = skipped = errors = 0
+    for item in req.memories:
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        if req.skip_duplicates and content in existing_contents:
+            skipped += 1
+            continue
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else None
+        try:
+            await _adapters[adapter_id].create(content, user_id=req.user_id, metadata=metadata)
+            imported += 1
+        except Exception:
+            errors += 1
+
+    return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
 @app.get("/stats")

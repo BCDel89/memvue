@@ -218,7 +218,7 @@ export default function App() {
         )}
         {tab === "graph" && <Graph key={refreshKey} userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
         {tab === "consolidate" && <Consolidate key={refreshKey} userId={userId} onStatsChange={loadStats} />}
-        {tab === "analytics" && <Analytics key={refreshKey} userId={userId} />}
+        {tab === "analytics" && <Analytics key={refreshKey} userId={userId} adapters={adapters} />}
       </main>
 
       {/* Settings modal */}

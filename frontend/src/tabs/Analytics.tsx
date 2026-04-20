@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../api/client'
-import type { MemoryEntry } from '../api/client'
+import type { MemoryEntry, AdapterInfo } from '../api/client'
 import { Loading } from '../components/Loading'
+import { ExportImportPanel } from '../components/ExportImportPanel'
 
 interface Props {
   userId: string
+  adapters?: AdapterInfo[]
 }
 
 const STALE_DAYS = 90
@@ -29,7 +31,7 @@ function shortSource(src: string): string {
   return src
 }
 
-export function Analytics({ userId }: Props) {
+export function Analytics({ userId, adapters = [] }: Props) {
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -168,6 +170,12 @@ export function Analytics({ userId }: Props) {
           </div>
         </Section>
       )}
+
+      <ExportImportPanel
+        adapters={adapters}
+        userId={userId}
+        onImported={() => {}}
+      />
     </div>
   )
 }

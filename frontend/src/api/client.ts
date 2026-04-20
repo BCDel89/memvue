@@ -197,4 +197,34 @@ export const api = {
     invalidateCache()
     return r
   },
+
+  exportMemories: async (format: 'json' | 'markdown-zip', userId?: string, adapter?: string) => {
+    const params = new URLSearchParams({ format })
+    if (userId) params.set('user_id', userId)
+    if (adapter) params.set('adapter', adapter)
+    const key = localStorage.getItem('memvue_api_key') || ''
+    const res = await fetch(`${BASE}/export?${params}`, {
+      headers: key ? { 'x-api-key': key } : {},
+    })
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+    const blob = await res.blob()
+    const filename = format === 'markdown-zip' ? 'memvue-export.zip' : 'memvue-export.json'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+
+  importMemories: async (memories: object[], adapter?: string, userId?: string, skipDuplicates = true) => {
+    const r = await req<{ imported: number; skipped: number; errors: number }>('POST', '/import', {
+      memories,
+      adapter,
+      user_id: userId,
+      skip_duplicates: skipDuplicates,
+    })
+    invalidateCache()
+    return r
+  },
 }
