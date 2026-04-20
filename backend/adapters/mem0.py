@@ -104,9 +104,12 @@ class Mem0Adapter(MemoryAdapter):
 
     async def update(self, memory_id: str, content: str, metadata: Optional[dict] = None) -> Memory:
         client = self._get_client()
+        if metadata is None:
+            existing = await self.get(memory_id)
+            metadata = existing.metadata or {}
         r = await client.put(
             f"{self.base_url}/memories/{memory_id}",
-            json={"content": content, "metadata": metadata or {}},
+            json={"content": content, "metadata": metadata},
             timeout=30,
         )
         r.raise_for_status()

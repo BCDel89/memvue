@@ -146,6 +146,8 @@ export const api = {
     fs_extensions?: string[]
     fs_roots?: string[]
     llm?: { provider: string; base_url: string; model: string; has_api_key: boolean }
+    support_url?: string
+    version?: string
   }>('GET', '/health'),
 
   features: () => req<Features>('GET', '/features'),

@@ -142,6 +142,8 @@ def health():
             "model": llm_rt.get("model", ""),
             "has_api_key": bool(llm_rt.get("api_key")),
         },
+        "support_url": _config.support_url,
+        "version": "2.0.0",
     }
 
 
