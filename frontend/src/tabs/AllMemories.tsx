@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { api } from '../api/client'
 import type { MemoryEntry, AdapterInfo } from '../api/client'
-import { MemoryCard, memoryTags } from '../components/MemoryCard'
+import { MemoryCard, memoryTags, isStale } from '../components/MemoryCard'
 import { MemoryModal } from '../components/MemoryModal'
 import { Loading } from '../components/Loading'
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
@@ -33,6 +33,7 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
   const [modal, setModal] = useState<{ open: boolean; editing?: MemoryEntry }>({ open: false })
   const [activeTag, setActiveTag] = useState<[string, string] | null>(null)
   const [category, setCategory] = useState<string>('all')
+  const [staleOnly, setStaleOnly] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
   const [showFilters, setShowFilters] = useState(false)
@@ -111,6 +112,7 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
     if (activeTag) list = list.filter(m =>
       memoryTags(m).some(([k, v]) => k === activeTag[0] && v === activeTag[1])
     )
+    if (staleOnly) list = list.filter(m => isStale(m))
     if (liveFilter) list = list.filter(m =>
       m.content.toLowerCase().includes(liveFilter.toLowerCase()) ||
       m.id.toLowerCase().includes(liveFilter.toLowerCase())
@@ -127,7 +129,8 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
     })
   }, [memories, liveFilter, sort, sourceFilter, activeTag, category])
 
-  const activeFilterCount = (category !== 'all' ? 1 : 0) + (sourceFilter !== 'all' ? 1 : 0) + (activeTag ? 1 : 0)
+  const staleCount = useMemo(() => memories.filter(m => isStale(m)).length, [memories])
+  const activeFilterCount = (category !== 'all' ? 1 : 0) + (sourceFilter !== 'all' ? 1 : 0) + (activeTag ? 1 : 0) + (staleOnly ? 1 : 0)
 
   async function handleDelete(m: MemoryEntry) {
     setDeleteTarget(m)
@@ -257,6 +260,20 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
                 {shortSource(s)}
               </button>
             ))}
+          </div>
+        )}
+
+        {staleCount > 0 && (
+          <div className="flex gap-2 px-3 sm:px-6 py-2 border-b border-gray-800 overflow-x-auto">
+            <button
+              onClick={() => setStaleOnly(s => !s)}
+              className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
+                ${staleOnly
+                  ? 'bg-amber-700 border-amber-600 text-white'
+                  : 'bg-gray-800 border-amber-800/50 text-amber-400 hover:border-amber-700'}`}
+            >
+              stale <span className="opacity-70">({staleCount})</span>
+            </button>
           </div>
         )}
 

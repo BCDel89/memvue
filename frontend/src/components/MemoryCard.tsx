@@ -1,7 +1,16 @@
 import { useState } from 'react'
 import type { MemoryEntry } from '../api/client'
 
-const SKIP_META = new Set(['path', 'filename', 'consolidated_from', 'consolidated_at'])
+const SKIP_META = new Set(['path', 'filename', 'consolidated_from', 'consolidated_at', 'stale', 'reviewed_at'])
+
+export function isStale(m: MemoryEntry, thresholdDays = 90): boolean {
+  if (m.metadata?.stale === 'true') return true
+  const reviewedAt = m.metadata?.reviewed_at as string | undefined
+  const lastActivity = reviewedAt || m.updated_at || m.created_at
+  if (!lastActivity) return false
+  const age = (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
+  return age > thresholdDays
+}
 
 export function memoryTags(m: MemoryEntry): [string, string][] {
   return Object.entries(m.metadata ?? {})
@@ -42,6 +51,9 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [editingMeta, setEditingMeta] = useState(false)
+  const [flagging, setFlagging] = useState(false)
+
+  const stale = isStale(memory)
   const [metaRows, setMetaRows] = useState<{ id: number; key: string; val: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -81,6 +93,28 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
     setMetaRows(r => r.filter(row => row.id !== id))
   }
 
+  async function flagStale() {
+    if (!onMetadataUpdate) return
+    setFlagging(true)
+    try {
+      await onMetadataUpdate(memory, { ...memory.metadata, stale: 'true' })
+    } finally {
+      setFlagging(false)
+    }
+  }
+
+  async function markReviewed() {
+    if (!onMetadataUpdate) return
+    setFlagging(true)
+    try {
+      const { stale: _s, ...rest } = memory.metadata as Record<string, unknown>
+      void _s
+      await onMetadataUpdate(memory, { ...rest, reviewed_at: new Date().toISOString() })
+    } finally {
+      setFlagging(false)
+    }
+  }
+
   async function saveMeta() {
     if (!onMetadataUpdate) return
     setSaving(true)
@@ -108,13 +142,40 @@ export function MemoryCard({ memory, onDelete, onEdit, onMetadataUpdate, highlig
   return (
     <div className="group relative rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-700 transition-colors">
       <div className="flex items-start justify-between gap-3 mb-2">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${sourceColor(memory.source)}`}>
-          {memory.source === 'mem0' ? '⬡' : '⬢'} {memory.source}
-        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${sourceColor(memory.source)}`}>
+            {memory.source === 'mem0' ? '⬡' : '⬢'} {memory.source}
+          </span>
+          {stale && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-900/50 text-amber-300 border-amber-700">
+              stale
+            </span>
+          )}
+        </div>
         <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button onClick={copy} className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400">
             {copied ? '✓' : 'copy'}
           </button>
+          {onMetadataUpdate && stale && (
+            <button
+              onClick={markReviewed}
+              disabled={flagging}
+              className="px-2 py-1 text-xs rounded bg-amber-900/60 hover:bg-amber-800/60 disabled:opacity-40 text-amber-300 transition-colors"
+              title="Mark as reviewed"
+            >
+              reviewed ✓
+            </button>
+          )}
+          {onMetadataUpdate && !stale && (
+            <button
+              onClick={flagStale}
+              disabled={flagging}
+              className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-gray-400 transition-colors"
+              title="Flag as stale"
+            >
+              flag
+            </button>
+          )}
           {onMetadataUpdate && (
             <button
               onClick={editingMeta ? closeMetaEditor : openMetaEditor}
