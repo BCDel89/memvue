@@ -3,17 +3,19 @@ import AllMemories from "./tabs/AllMemories";
 import LocalFiles from "./tabs/LocalFiles";
 import Graph from "./tabs/Graph";
 import { Consolidate } from "./tabs/Consolidate";
+import Analytics from "./tabs/Analytics";
 import StatsBar from "./components/StatsBar";
 import { api } from "./api/client";
 import type { AdapterInfo, LLMConfig } from "./api/client";
 
-type Tab = "all" | "files" | "graph" | "consolidate";
+type Tab = "all" | "files" | "graph" | "consolidate" | "analytics";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "All Memories" },
   { id: "files", label: "Local Files" },
   { id: "graph", label: "Graph" },
   { id: "consolidate", label: "Consolidate" },
+  { id: "analytics", label: "Analytics" },
 ];
 
 const USER_ID_KEY = "memvue_user_id";
@@ -216,6 +218,7 @@ export default function App() {
         )}
         {tab === "graph" && <Graph key={refreshKey} userId={userId} adapters={adapters} agentName={agentName} entryPoints={entryPoints} />}
         {tab === "consolidate" && <Consolidate key={refreshKey} userId={userId} onStatsChange={loadStats} />}
+        {tab === "analytics" && <Analytics key={refreshKey} userId={userId} />}
       </main>
 
       {/* Settings modal */}
