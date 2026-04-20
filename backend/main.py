@@ -13,6 +13,7 @@ from pathlib import Path
 
 from adapters import Memory, MemoryAdapter, MemoryStats, Mem0Adapter, FilesystemAdapter
 from config import load_config, load_runtime, save_runtime
+from llm import LLMAdapter, build_llm_adapter
 
 
 # --- build adapter registry from config ---
@@ -34,13 +35,20 @@ def _build_adapters() -> dict[str, MemoryAdapter]:
 
 
 _adapters: dict[str, MemoryAdapter] = {}
+_llm_adapter: LLMAdapter | None = None
 _config = load_config()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _adapters
+    global _adapters, _llm_adapter
     _adapters = _build_adapters()
+    _llm_adapter = build_llm_adapter(load_runtime().get("llm") or {
+        "provider": _config.llm.provider,
+        "base_url": _config.llm.base_url,
+        "api_key": _config.llm.api_key,
+        "model": _config.llm.model,
+    })
     yield
 
 
@@ -119,6 +127,7 @@ def _fs_roots() -> list[str]:
 
 @app.get("/health")
 def health():
+    llm_rt = load_runtime().get("llm", {})
     return {
         "status": "ok",
         "adapters": list(_adapters.keys()),
@@ -127,6 +136,12 @@ def health():
         "graph_entry_points": _config.graph_entry_points,
         "fs_extensions": _fs_extensions(),
         "fs_roots": _fs_roots(),
+        "llm": {
+            "provider": llm_rt.get("provider", ""),
+            "base_url": llm_rt.get("base_url", ""),
+            "model": llm_rt.get("model", ""),
+            "has_api_key": bool(llm_rt.get("api_key")),
+        },
     }
 
 
@@ -268,6 +283,89 @@ async def remove_fs_root(path: str = Query(...), x_api_key: str = Header(default
     runtime["fs_roots"] = _fs_roots()
     save_runtime(runtime)
     return {"ok": True, "fs_roots": _fs_roots()}
+
+
+@app.get("/features")
+async def get_features():
+    configured = _llm_adapter is not None
+    return {
+        "llm_configured": configured,
+        "llm_provider": getattr(_llm_adapter, "name", "") if _llm_adapter else "",
+        "llm_model": getattr(_llm_adapter, "model", "") if _llm_adapter else "",
+        "ai_ingest": configured,
+        "ai_tagging": configured,
+        "ai_digest": configured,
+        "consolidation": True,
+        "duplicates": True,
+        "staleness": True,
+        "analytics": True,
+    }
+
+
+_LLM_PROVIDERS = [
+    {"id": "ollama", "label": "Ollama (local)", "fields": ["base_url", "model"]},
+    {"id": "openai_compatible", "label": "OpenAI-compatible (OpenRouter, Groq, LM Studio…)", "fields": ["base_url", "api_key", "model"]},
+    {"id": "anthropic", "label": "Anthropic", "fields": ["api_key", "model"]},
+]
+
+
+@app.get("/llm/providers")
+async def list_llm_providers(x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    return _LLM_PROVIDERS
+
+
+@app.get("/config/llm")
+async def get_llm_config(x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    rt = load_runtime()
+    cfg = rt.get("llm", {})
+    return {
+        "provider": cfg.get("provider", _config.llm.provider),
+        "base_url": cfg.get("base_url", _config.llm.base_url),
+        "api_key": cfg.get("api_key", _config.llm.api_key),
+        "model": cfg.get("model", _config.llm.model),
+    }
+
+
+class LLMConfigPatch(BaseModel):
+    provider: str = ""
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+
+
+@app.patch("/config/llm")
+async def patch_llm_config(patch: LLMConfigPatch, x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    global _llm_adapter
+    runtime = load_runtime()
+    runtime["llm"] = {
+        "provider": patch.provider,
+        "base_url": patch.base_url,
+        "api_key": patch.api_key,
+        "model": patch.model,
+    }
+    save_runtime(runtime)
+    _llm_adapter = build_llm_adapter(runtime["llm"])
+    return {"ok": True, "llm_configured": _llm_adapter is not None}
+
+
+@app.post("/llm/test")
+async def test_llm(x_api_key: str = Header(default="")):
+    check_auth(x_api_key)
+    if _llm_adapter is None:
+        return {"ok": False, "error": "No LLM configured"}
+    try:
+        ok = await _llm_adapter.health()
+        return {
+            "ok": ok,
+            "provider": _llm_adapter.name,
+            "model": getattr(_llm_adapter, "model", ""),
+            "error": None if ok else "Health check failed",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/stats")

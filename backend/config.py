@@ -42,6 +42,15 @@ class Mem0Config:
 
 
 @dataclass
+class LLMConfig:
+    provider: str = ""  # "ollama" | "openai_compatible" | "anthropic"
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+    enabled: bool = False
+
+
+@dataclass
 class FilesystemConfig:
     roots: list[str] = field(default_factory=list)
     extensions: list[str] = field(default_factory=lambda: [".md"])
@@ -55,6 +64,7 @@ class AppConfig:
     api_key: str
     mem0: Mem0Config
     filesystem: FilesystemConfig
+    llm: LLMConfig = field(default_factory=LLMConfig)
     agent_name: str = "agent"
     cors_origins: list[str] = field(default_factory=lambda: ["*"])
     graph_entry_points: list[str] = field(default_factory=lambda: ["MEMORY.md", "CLAUDE.md"])
@@ -84,11 +94,25 @@ def load_config() -> AppConfig:
     entry_raw = os.environ.get("GRAPH_ENTRY_POINTS", "MEMORY.md,CLAUDE.md")
     entry_points = [e.strip() for e in entry_raw.split(",") if e.strip()]
 
+    # LLM config — runtime takes precedence over env vars
+    llm_rt = runtime.get("llm", {})
+    llm_provider = llm_rt.get("provider") or os.environ.get("LLM_PROVIDER", "")
+    llm_base_url = llm_rt.get("base_url") or os.environ.get("LLM_BASE_URL", "")
+    llm_api_key  = llm_rt.get("api_key")  or os.environ.get("LLM_API_KEY", "")
+    llm_model    = llm_rt.get("model")    or os.environ.get("LLM_MODEL", "")
+
     return AppConfig(
         api_key=os.environ.get("MEMVUE_API_KEY", ""),
         agent_name=os.environ.get("AGENT_NAME", "agent"),
         cors_origins=cors_origins,
         graph_entry_points=entry_points,
+        llm=LLMConfig(
+            provider=llm_provider,
+            base_url=llm_base_url,
+            api_key=llm_api_key,
+            model=llm_model,
+            enabled=bool(llm_provider and llm_model),
+        ),
         mem0=Mem0Config(
             url=mem0_url,
             api_key=mem0_key,

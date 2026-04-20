@@ -19,6 +19,32 @@ export interface Stats {
   [key: string]: unknown
 }
 
+export interface Features {
+  llm_configured: boolean
+  llm_provider: string
+  llm_model: string
+  ai_ingest: boolean
+  ai_tagging: boolean
+  ai_digest: boolean
+  consolidation: boolean
+  duplicates: boolean
+  staleness: boolean
+  analytics: boolean
+}
+
+export interface LLMProvider {
+  id: string
+  label: string
+  fields: string[]
+}
+
+export interface LLMConfig {
+  provider: string
+  base_url: string
+  api_key: string
+  model: string
+}
+
 const BASE = '/api'
 const CACHE_TTL = 30_000  // 30s
 const cache = new Map<string, { ts: number; data: unknown }>()
@@ -102,7 +128,30 @@ export const api = {
 
   stats: (userId?: string) => req<Stats>('GET', `/stats${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`),
 
-  health: () => req<{ status: string; adapters: string[]; default_user_id?: string; agent_name?: string; graph_entry_points?: string[]; fs_extensions?: string[]; fs_roots?: string[] }>('GET', '/health'),
+  health: () => req<{
+    status: string
+    adapters: string[]
+    default_user_id?: string
+    agent_name?: string
+    graph_entry_points?: string[]
+    fs_extensions?: string[]
+    fs_roots?: string[]
+    llm?: { provider: string; base_url: string; model: string; has_api_key: boolean }
+  }>('GET', '/health'),
+
+  features: () => req<Features>('GET', '/features'),
+
+  llmProviders: () => req<LLMProvider[]>('GET', '/llm/providers'),
+
+  getLLMConfig: () => req<LLMConfig>('GET', '/config/llm'),
+
+  saveLLMConfig: async (config: LLMConfig) => {
+    const r = await req<{ ok: boolean; llm_configured: boolean }>('PATCH', '/config/llm', config)
+    invalidateCache()
+    return r
+  },
+
+  testLLM: () => req<{ ok: boolean; provider?: string; model?: string; error?: string | null }>('POST', '/llm/test'),
 
   updateExtensions: async (extensions: string[]) => {
     const r = await req<{ ok: boolean; fs_extensions: string[]; fs_roots: string[] }>('PATCH', '/config', { fs_extensions: extensions })

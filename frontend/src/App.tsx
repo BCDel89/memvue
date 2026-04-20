@@ -4,7 +4,7 @@ import LocalFiles from "./tabs/LocalFiles";
 import Graph from "./tabs/Graph";
 import StatsBar from "./components/StatsBar";
 import { api } from "./api/client";
-import type { AdapterInfo } from "./api/client";
+import type { AdapterInfo, LLMConfig } from "./api/client";
 
 type Tab = "all" | "files" | "graph";
 
@@ -36,6 +36,9 @@ export default function App() {
   const [fsRoots, setFsRoots] = useState<string[]>([]);
   const [newRootInput, setNewRootInput] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [llmConfig, setLLMConfig] = useState<LLMConfig>({ provider: "", base_url: "", api_key: "", model: "" });
+  const [llmTestStatus, setLLMTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [llmTestMessage, setLLMTestMessage] = useState("");
 
   const checkHealth = useCallback(async () => {
     try {
@@ -99,6 +102,20 @@ export default function App() {
     }
   }
 
+  async function handleTestLLM() {
+    setLLMTestStatus("testing")
+    setLLMTestMessage("")
+    try {
+      await api.saveLLMConfig(llmConfig)
+      const r = await api.testLLM()
+      setLLMTestStatus(r.ok ? "ok" : "error")
+      setLLMTestMessage(r.ok ? `${r.provider} · ${r.model}` : (r.error ?? "Failed"))
+    } catch (e) {
+      setLLMTestStatus("error")
+      setLLMTestMessage(String(e))
+    }
+  }
+
   async function saveSettings() {
     localStorage.setItem(API_KEY_KEY, apiKeyInput);
     localStorage.setItem(USER_ID_KEY, userIdInput);
@@ -107,6 +124,7 @@ export default function App() {
     if (exts.length) {
       try { await api.updateExtensions(exts) } catch { /* non-fatal */ }
     }
+    try { await api.saveLLMConfig(llmConfig) } catch { /* non-fatal */ }
     setRefreshKey(k => k + 1);
     setShowSettings(false);
     checkHealth();
@@ -151,7 +169,11 @@ export default function App() {
             <span className="hidden sm:inline text-xs text-gray-500">{stats.total} memories</span>
           )}
           <button
-            onClick={() => setShowSettings(true)}
+            onClick={() => {
+              setShowSettings(true)
+              setLLMTestStatus("idle")
+              api.getLLMConfig().then(setLLMConfig).catch(() => {})
+            }}
             className="text-gray-400 hover:text-gray-200 transition-colors"
             title="Settings"
           >
@@ -281,6 +303,88 @@ export default function App() {
                     Add
                   </button>
                 </div>
+              </div>
+
+              {/* AI Features */}
+              <div className="border-t border-gray-800 pt-4 space-y-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">AI Features</label>
+                  <p className="text-xs text-gray-600">Optional — enables ingest, smart tagging, and digest. Works with Ollama, OpenRouter, or any OpenAI-compatible API.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Provider</label>
+                  <select
+                    value={llmConfig.provider}
+                    onChange={e => setLLMConfig(c => ({ ...c, provider: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
+                  >
+                    <option value="">None (AI features disabled)</option>
+                    <option value="ollama">Ollama (local)</option>
+                    <option value="openai_compatible">OpenAI-compatible (OpenRouter, Groq…)</option>
+                    <option value="anthropic">Anthropic</option>
+                  </select>
+                </div>
+
+                {llmConfig.provider && llmConfig.provider !== "anthropic" && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+                    <input
+                      type="text"
+                      value={llmConfig.base_url}
+                      onChange={e => setLLMConfig(c => ({ ...c, base_url: e.target.value }))}
+                      placeholder={llmConfig.provider === "ollama" ? "http://localhost:11434" : "https://openrouter.ai/api"}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                )}
+
+                {(llmConfig.provider === "openai_compatible" || llmConfig.provider === "anthropic") && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">API Key</label>
+                    <input
+                      type="password"
+                      value={llmConfig.api_key}
+                      onChange={e => setLLMConfig(c => ({ ...c, api_key: e.target.value }))}
+                      placeholder="sk-…"
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                )}
+
+                {llmConfig.provider && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Model</label>
+                    <input
+                      type="text"
+                      value={llmConfig.model}
+                      onChange={e => setLLMConfig(c => ({ ...c, model: e.target.value }))}
+                      placeholder={
+                        llmConfig.provider === "anthropic" ? "claude-sonnet-4-6" :
+                        llmConfig.provider === "ollama" ? "gemma3:4b" : "gpt-4o"
+                      }
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                )}
+
+                {llmConfig.provider && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleTestLLM}
+                      disabled={llmTestStatus === "testing" || !llmConfig.model}
+                      className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-200 rounded-lg transition-colors"
+                    >
+                      {llmTestStatus === "testing" ? "Testing…" : "Test connection"}
+                    </button>
+                    {llmTestStatus === "ok" && (
+                      <span className="text-xs text-emerald-400">✓ {llmTestMessage}</span>
+                    )}
+                    {llmTestStatus === "error" && (
+                      <span className="text-xs text-red-400">✕ {llmTestMessage}</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="text-xs text-gray-600 border-t border-gray-800 pt-3">
