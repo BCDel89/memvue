@@ -32,7 +32,7 @@ if _env_path.exists():
 MEMVUE_URL   = os.environ.get("MEMVUE_URL", "http://localhost:7700")
 MEM0_URL     = os.environ.get("MEM0_URL", "http://localhost:8081")
 MEM0_API_KEY = os.environ["MEM0_API_KEY"]
-MEM0_USER_ID = os.environ.get("MEM0_USER_ID", "sage")
+MEM0_USER_ID = os.environ.get("MEM0_USER_ID", "default")
 
 MEM0_HEADERS = {"x-api-key": MEM0_API_KEY, "Content-Type": "application/json"}
 DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}\.md$"
