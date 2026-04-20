@@ -34,14 +34,14 @@ export function MemoryModal({ memory, adapters, onSave, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-2xl mx-4 rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-gray-800">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-2xl sm:mx-4 rounded-t-2xl sm:rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col max-h-[90dvh]">
+        <div className="flex items-center justify-between p-5 border-b border-gray-800 shrink-0">
           <h2 className="text-sm font-semibold text-gray-100">{memory ? 'Edit memory' : 'New memory'}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {!memory && adapters.length > 1 && (
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Adapter</label>
@@ -71,7 +71,7 @@ export function MemoryModal({ memory, adapters, onSave, onClose }: Props) {
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 p-5 border-t border-gray-800">
+        <div className="flex justify-end gap-2 p-5 border-t border-gray-800 shrink-0">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200">
             Cancel
           </button>

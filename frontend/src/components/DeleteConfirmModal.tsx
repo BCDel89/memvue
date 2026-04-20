@@ -12,10 +12,10 @@ export function DeleteConfirmModal({ label, onConfirm, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm shadow-xl">
+      <div className="bg-gray-900 border border-gray-700 rounded-t-xl sm:rounded-xl p-6 w-full max-w-sm shadow-xl">
         <h2 className="text-sm font-semibold text-red-400 mb-1">Delete</h2>
         <p className="text-xs text-gray-400 mb-4 break-all">{label}</p>
         <p className="text-xs text-gray-500 mb-2">

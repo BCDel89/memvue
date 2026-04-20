@@ -456,7 +456,7 @@ export default function Graph({ userId, adapters, agentName = "agent", entryPoin
         </ReactFlow>
 
         {selected && (
-          <div className="absolute top-2 left-2 w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-xl overflow-hidden z-10">
+          <div className="absolute top-2 left-2 w-[calc(100vw-1rem)] max-w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-xl overflow-hidden z-10">
             <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium
                 ${selected.source === "mem0"

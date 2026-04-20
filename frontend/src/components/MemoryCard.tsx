@@ -58,7 +58,7 @@ export function MemoryCard({ memory, onDelete, onEdit, highlight = '', activeTag
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${sourceColor(memory.source)}`}>
           {memory.source === 'mem0' ? '⬡' : '⬢'} {memory.source}
         </span>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button onClick={copy} className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400">
             {copied ? '✓' : 'copy'}
           </button>

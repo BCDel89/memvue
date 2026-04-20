@@ -115,11 +115,11 @@ export default function App() {
   return (
     <div className="h-screen bg-gray-950 text-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-gray-800 px-4 h-12 flex items-center gap-4 shrink-0">
+      <header className="border-b border-gray-800 px-4 py-1 flex flex-wrap items-center gap-x-4 gap-y-1 shrink-0 min-h-12">
         <span className="font-semibold tracking-tight text-white">memvue</span>
 
         <div
-          className={`w-2 h-2 rounded-full ${
+          className={`w-2 h-2 rounded-full shrink-0 ${
             connected === null
               ? "bg-gray-600"
               : connected
@@ -129,8 +129,8 @@ export default function App() {
           title={connected === null ? "checking…" : connected ? "connected" : "backend unreachable"}
         />
 
-        {/* Tabs */}
-        <nav className="flex gap-1 ml-4">
+        {/* Tabs — wraps below logo on very small screens */}
+        <nav className="flex gap-1 sm:ml-2 order-3 sm:order-none w-full sm:w-auto pb-1 sm:pb-0">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -148,7 +148,7 @@ export default function App() {
 
         <div className="ml-auto flex items-center gap-3">
           {stats && (
-            <span className="text-xs text-gray-500">{stats.total} memories</span>
+            <span className="hidden sm:inline text-xs text-gray-500">{stats.total} memories</span>
           )}
           <button
             onClick={() => setShowSettings(true)}
@@ -196,10 +196,10 @@ export default function App() {
       {/* Settings modal */}
       {showSettings && (
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50"
           onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}
         >
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-xl">
+          <div className="bg-gray-900 border border-gray-700 rounded-t-xl sm:rounded-xl p-6 w-full max-w-md shadow-xl max-h-[90dvh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Settings</h2>
 
             <div className="space-y-4">
