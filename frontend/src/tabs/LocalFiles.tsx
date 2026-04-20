@@ -33,6 +33,7 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
   const [activeTag, setActiveTag] = useState<[string, string] | null>(null)
   const [modal, setModal] = useState<{ open: boolean; editing?: MemoryEntry }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<MemoryEntry | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
 
   async function load() {
     if (!fsAdapters.length) return
@@ -81,6 +82,8 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
     })
   }, [files, filter, sort, sourceFilter, activeTag])
 
+  const activeFilterCount = (sourceFilter !== 'all' ? 1 : 0) + (activeTag ? 1 : 0)
+
   async function confirmDelete() {
     if (!deleteTarget) return
     try {
@@ -115,17 +118,19 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-wrap items-center gap-3 px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-800">
+      {/* toolbar */}
+      <div className="flex items-center gap-2 px-3 sm:px-6 py-2 sm:py-3 border-b border-gray-800">
         <input
           value={filter}
           onChange={e => setFilter(e.target.value)}
           placeholder="Filter files…"
-          className="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
+          className="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 px-3 py-1.5 sm:py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
         />
+
         <select
           value={sort}
           onChange={e => setSort(e.target.value as SortKey)}
-          className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-300 focus:outline-none"
+          className="rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-300 focus:outline-none"
         >
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
@@ -134,40 +139,63 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
           <option value="az">A→Z</option>
           <option value="za">Z→A</option>
         </select>
+
+        {/* filter toggle — mobile only */}
+        {sources.length > 2 && (
+          <button
+            onClick={() => setShowFilters(f => !f)}
+            className={`sm:hidden relative px-2.5 py-1.5 rounded-lg border text-sm transition-colors
+              ${showFilters || activeFilterCount > 0
+                ? 'bg-violet-600 border-violet-600 text-white'
+                : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+            title="Filters"
+          >
+            ⊞
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-brand-500 text-white text-[10px] flex items-center justify-center leading-none">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           onClick={() => setModal({ open: true })}
-          className="px-3 py-2 rounded-lg text-sm bg-brand-600 hover:bg-brand-700 text-white"
+          className="px-3 py-1.5 sm:py-2 rounded-lg text-sm bg-brand-600 hover:bg-brand-700 text-white whitespace-nowrap"
         >
           + New file
         </button>
       </div>
 
-      {sources.length > 2 && (
-        <div className="flex gap-2 px-3 sm:px-6 py-2 border-b border-gray-800 overflow-x-auto">
-          {sources.map(s => (
-            <button
-              key={s}
-              onClick={() => setSourceFilter(s)}
-              title={s}
-              className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
-                ${sourceFilter === s
-                  ? 'bg-brand-600 border-brand-600 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}
-            >
-              {shortSource(s)}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* filter panel */}
+      <div className={`${showFilters ? 'flex' : 'hidden'} sm:flex flex-col`}>
+        {sources.length > 2 && (
+          <div className="flex gap-2 px-3 sm:px-6 py-2 border-b border-gray-800 overflow-x-auto">
+            {sources.map(s => (
+              <button
+                key={s}
+                onClick={() => setSourceFilter(s)}
+                title={s}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap
+                  ${sourceFilter === s
+                    ? 'bg-brand-600 border-brand-600 text-white'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}
+              >
+                {shortSource(s)}
+              </button>
+            ))}
+          </div>
+        )}
 
-      {activeTag && (
-        <div className="flex items-center gap-2 px-3 sm:px-6 py-2 bg-violet-900/20 border-b border-violet-800/40 text-xs">
-          <span className="text-violet-300">tag: {activeTag[0]}: {activeTag[1]}</span>
-          <button onClick={() => setActiveTag(null)} className="text-violet-400 hover:text-violet-200">✕ clear</button>
-        </div>
-      )}
+        {activeTag && (
+          <div className="flex items-center gap-2 px-3 sm:px-6 py-2 bg-violet-900/20 border-b border-violet-800/40 text-xs">
+            <span className="text-violet-300">tag: {activeTag[0]}: {activeTag[1]}</span>
+            <button onClick={() => setActiveTag(null)} className="text-violet-400 hover:text-violet-200">✕ clear</button>
+          </div>
+        )}
+      </div>
 
-      <div className="px-3 sm:px-6 py-2 text-xs text-gray-600">
+      <div className="px-3 sm:px-6 py-1.5 text-xs text-gray-600">
         {filtered.length.toLocaleString()}{filtered.length !== files.length ? ` of ${files.length.toLocaleString()}` : ''} files
       </div>
 

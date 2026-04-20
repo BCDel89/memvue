@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { MemoryEntry } from '../api/client'
 
-const SKIP_META = new Set(['path', 'filename'])
+const SKIP_META = new Set(['path', 'filename', 'consolidated_from', 'consolidated_at'])
 
 export function memoryTags(m: MemoryEntry): [string, string][] {
   return Object.entries(m.metadata ?? {})

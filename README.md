@@ -8,11 +8,12 @@ Browse, search, create, edit, and delete memories across multiple sources — al
 
 ## Features
 
-- **All Memories** — unified view across all adapters, semantic search (↵), substring filter, sort, source filter
+- **All Memories** — unified view across all adapters, semantic search (↵), substring filter, sort, category/source filters
 - **Local Files** — browse markdown files with frontmatter support, filter, sort, inline edit
-- **Graph** — force-directed visualization of memories clustered by source
+- **Graph** — force-directed visualization of memories clustered by source; resolves `mem0://uuid` cross-links directly
 - **Pluggable adapters** — mem0 and filesystem out of the box; add your own via `MemoryAdapter`
 - **Runtime settings UI** — add/remove memory directories and file extensions without restarting
+- **Mobile-responsive** — full bottom-sheet modals, collapsible filter panel, compact toolbar on small screens
 
 ## Quickstart
 
@@ -64,6 +65,28 @@ npm run dev
 ### Runtime settings
 
 Memory directories and file extensions can also be managed from the **Settings panel** in the UI (gear icon, top-right). Changes persist across restarts via `backend/runtime-config.json` and take effect immediately — no restart needed.
+
+## Scripts
+
+Utility scripts live in `scripts/`.
+
+**`consolidate_daily.py`** — consolidates mem0 memories that share a `source_file` metadata key into a single entry per file (useful after bulk ingestion that chunks a single document across many records).
+
+```bash
+# dry run — show what would be merged
+python scripts/consolidate_daily.py
+
+# consolidate daily logs only (YYYY-MM-DD.md source_file pattern)
+python scripts/consolidate_daily.py --apply
+
+# consolidate a specific file pattern
+python scripts/consolidate_daily.py --pattern '^infra/.*\.md$' --apply
+
+# consolidate everything with a shared source_file
+python scripts/consolidate_daily.py --all --apply
+```
+
+Reads credentials from `.env` at the repo root. Requires `requests` (`pip install requests`).
 
 ## Writing a custom adapter
 
