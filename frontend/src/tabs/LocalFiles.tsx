@@ -216,6 +216,10 @@ export function LocalFiles({ adapters, userId, onStatsChange }: Props) {
             highlight={filter}
             onDelete={m => setDeleteTarget(m)}
             onEdit={f => setModal({ open: true, editing: f })}
+            onMetadataUpdate={async (m, metadata) => {
+              await api.update(m.source, m.id, m.content, metadata)
+              setFiles(prev => prev.map(x => x.id === m.id ? { ...x, metadata } : x))
+            }}
             activeTag={activeTag}
             onTagClick={tag => setActiveTag(prev =>
               prev && prev[0] === tag[0] && prev[1] === tag[1] ? null : tag

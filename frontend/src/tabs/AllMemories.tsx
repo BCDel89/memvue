@@ -291,6 +291,10 @@ export function AllMemories({ adapters, userId, onStatsChange }: Props) {
             highlight={liveFilter}
             onDelete={handleDelete}
             onEdit={m => setModal({ open: true, editing: m })}
+            onMetadataUpdate={async (m, metadata) => {
+              await api.update(m.source, m.id, m.content, metadata)
+              setMemories(prev => prev.map(x => x.id === m.id ? { ...x, metadata } : x))
+            }}
             activeTag={activeTag}
             onTagClick={(tag) => setActiveTag(prev => prev && prev[0] === tag[0] && prev[1] === tag[1] ? null : tag)}
           />
