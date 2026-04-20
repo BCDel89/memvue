@@ -41,6 +41,8 @@ export default function App() {
   const [llmConfig, setLLMConfig] = useState<LLMConfig>({ provider: "", base_url: "", api_key: "", model: "" });
   const [llmTestStatus, setLLMTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
   const [llmTestMessage, setLLMTestMessage] = useState("");
+  const [supportUrl, setSupportUrl] = useState("");
+  const [appVersion, setAppVersion] = useState("");
 
   const checkHealth = useCallback(async () => {
     try {
@@ -56,6 +58,8 @@ export default function App() {
       if (h.graph_entry_points?.length) setEntryPoints(h.graph_entry_points);
       if (h.fs_extensions?.length) setExtensionsInput(h.fs_extensions.join(","));
       if (h.fs_roots) setFsRoots(h.fs_roots);
+      if (h.support_url) setSupportUrl(h.support_url);
+      if (h.version) setAppVersion(h.version);
     } catch {
       setConnected(false);
     }
@@ -390,8 +394,31 @@ export default function App() {
                 )}
               </div>
 
-              <div className="text-xs text-gray-600 border-t border-gray-800 pt-3">
-                Backend: <code className="text-gray-500">http://localhost:7700</code>
+              <div className="border-t border-gray-800 pt-3 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-gray-600">
+                  <span>Backend: <code className="text-gray-500">http://localhost:7700</code></span>
+                  {appVersion && <span className="text-gray-600">v{appVersion}</span>}
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <a
+                    href="https://github.com/BCDel89/memvue"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    GitHub ↗
+                  </a>
+                  {supportUrl && (
+                    <a
+                      href={supportUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-pink-400 hover:text-pink-300 transition-colors"
+                    >
+                      ♥ Support
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 
