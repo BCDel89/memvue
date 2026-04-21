@@ -4,6 +4,8 @@
 
 A visual memory hub for [mem0](https://github.com/mem0ai/mem0) and local markdown files — browse, search, clean, and sync memories across AI agent frameworks from one UI.
 
+Works in any browser — desktop or mobile.
+
 ![memvue files tab](docs/screenshots/02-files-tab.png)
 
 ---
@@ -72,7 +74,49 @@ MemVue bridges two memory systems:
 - Configure LLM provider (Ollama, Anthropic, OpenRouter, or any OpenAI-compatible API)
 - Multi-workspace support via `@workspace` selector
 
-![memvue settings](docs/screenshots/04-settings-skill.png)
+---
+
+## Memory graph
+
+Most memory tools are a flat list. MemVue's graph shows how your memories connect.
+
+Each node is a file or mem0 memory. Edges come from `mem0://uuid` cross-links in your markdown — MemVue resolves them directly so you can see the actual web of context your agents are building up. Clusters form naturally by source: `fs:memory`, `fs:workspace`, `mem0`.
+
+Click any node to inspect it inline, edit or delete without leaving the graph, and drill into linked nodes. It's the fastest way to spot what's redundant, what's well-connected, and what's floating in isolation.
+
+![memvue graph view](docs/screenshots/05-graph-view.png)
+
+<details>
+<summary>Mobile</summary>
+
+![memvue graph mobile](docs/screenshots/mobile-graph.png)
+![memvue all tab mobile](docs/screenshots/mobile-all.png)
+
+</details>
+
+---
+
+## Agentic setup
+
+Let your AI agent do the setup. Paste this into Claude Code (or any capable agent) and it'll detect your existing memory directories, configure `.env`, and launch MemVue:
+
+```
+Set up MemVue for me.
+
+1. Clone https://github.com/BCDel89/memvue into a local directory of your choice
+2. Find all directories on this machine that contain AI agent memory files — look for .claude, .cline, .continue, and any other agent config dirs with .md memory files
+3. Copy .env.example to .env and fill it in:
+   - Set FS_ROOTS to a comma-separated list of every memory directory you found
+   - Leave MEM0_URL/MEM0_API_KEY blank if I don't have a mem0 account yet
+4. Update docker-compose.yml to mount each FS_ROOTS path as a read-only volume
+5. Run: docker compose up -d
+6. Open http://localhost:5173 and confirm the Files tab shows my memory files
+
+If docker isn't available, run the backend and frontend locally per the README.
+Report what you found and any steps that need my input (API keys, etc.).
+```
+
+Claude will scan your system, wire up the config, and hand you a running MemVue pointed at your actual memory files.
 
 ---
 
